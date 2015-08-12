@@ -62,6 +62,8 @@ setup(
     author_email='ajackson@eecs.ucf.edu',
     url='https://readthedocs.org/builds/mlpy/',
     download_url='https://github.com/evenmarbles/mlpy',
+    ext_package="mlpy.libs",
+    ext_modules=ext_modules,
     packages=[
         'mlpy',
     ],
