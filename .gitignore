@@ -41,3 +41,20 @@ output/*/index.html
 
 # Sphinx
 docs/_build
+docs/generated
+
+# PyCharm project
+.idea
+
+# Microsoft Visual Studio project
+*.opensdf
+*.sdf
+*.tlog
+*.exp
+*.vcxproj
+*.vcxproj.filters
+*.idb
+*.sln
+
+# Samples
+examples

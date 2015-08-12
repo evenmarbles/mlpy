@@ -16,11 +16,27 @@
 import sys
 import os
 
+on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
+
 # If extensions (or modules to document with autodoc) are in another
 # directory, add these directories to sys.path here. If the directory is
 # relative to the documentation root, use os.path.abspath to make it
 # absolute, like shown here.
-#sys.path.insert(0, os.path.abspath('.'))
+sys.path.insert(0, os.path.abspath('..'))
+
+if on_rtd:
+    import mock
+    MOCK_MODULES = ['numpy', 'pygame', 'naoqi',
+                    'scipy', 'scipy.stats', 'scipy.io', 'scipy.misc',
+                    'cplex', 'cplex.exceptions',
+                    'matplotlib', 'matplotlib.pyplot', 'matplotlib.backends', 'matplotlib.backends.backend_pdf',
+                    'matplotlib.patches',
+                    'sklearn', 'sklearn.utils', 'sklearn.utils.extmath', 'sklearn.cluster', 'sklearn.metrics',
+                    'sklearn.metrics.pairwise', 'sklearn.neighbors', 'sklearn.neighbors.dist_metrics',
+                    'sklearn.mixture',
+                    'mpl_toolkits', 'mpl_toolkits.mplot3d', '_c45tree', 'mlpy.libs', 'mlpy.libs._hmmc']
+    for mod_name in MOCK_MODULES:
+        sys.modules[mod_name] = mock.Mock()
 
 # Get the project root dir, which is the parent dir of this
 cwd = os.getcwd()
@@ -38,9 +54,17 @@ import mlpy
 # If your documentation needs a minimal Sphinx version, state it here.
 #needs_sphinx = '1.0'
 
+sys.path.insert(0, os.path.abspath('sphinxext'))
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
-extensions = ['sphinx.ext.autodoc', 'sphinx.ext.viewcode']
+extensions = ['sphinx.ext.autodoc',
+              'sphinx.ext.autosummary',
+              'sphinx.ext.intersphinx',
+              'sphinx.ext.pngmath',
+              'sphinx.ext.todo',
+              'sphinx.ext.viewcode',
+              'numpydoc',
+              ]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -55,7 +79,7 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 # General information about the project.
-project = u'MLPy'
+project = u'mlpy'
 copyright = u'2015, Astrid Jackson'
 
 # The version info for the project you're documenting, acts as replacement
@@ -86,7 +110,7 @@ exclude_patterns = ['_build']
 #default_role = None
 
 # If true, '()' will be appended to :func: etc. cross-reference text.
-#add_function_parentheses = True
+add_function_parentheses = False
 
 # If true, the current module name will be prepended to all description
 # unit titles (such as .. function::).
@@ -106,12 +130,18 @@ pygments_style = 'sphinx'
 # documents.
 #keep_warnings = False
 
+# If true, `todo` and `todoList` produce output, else they produce nothing.
+todo_include_todos = True
+
 
 # -- Options for HTML output -------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-html_theme = 'default'
+if not on_rtd:
+    import sphinx_rtd_theme
+    html_theme = 'sphinx_rtd_theme'
+    html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 
 # Theme options are theme-specific and customize the look and feel of a
 # theme further.  For a list of options available for each theme, see the
@@ -209,7 +239,7 @@ latex_elements = {
 # [howto/manual]).
 latex_documents = [
     ('index', 'mlpy.tex',
-     u'MLPy Documentation',
+     u'mlpy Documentation',
      u'Astrid Jackson', 'manual'),
 ]
 
@@ -240,7 +270,7 @@ latex_documents = [
 # (source start file, name, description, authors, manual section).
 man_pages = [
     ('index', 'mlpy',
-     u'MLPy Documentation',
+     u'mlpy Documentation',
      [u'Astrid Jackson'], 1)
 ]
 
@@ -255,10 +285,10 @@ man_pages = [
 #  dir menu entry, description, category)
 texinfo_documents = [
     ('index', 'mlpy',
-     u'MLPy Documentation',
+     u'mlpy Documentation',
      u'Astrid Jackson',
      'mlpy',
-     'One line description of project.',
+     'An artificial intelligence library for Python.',
      'Miscellaneous'),
 ]
 
@@ -273,3 +303,30 @@ texinfo_documents = [
 
 # If true, do not generate a @detailmenu in the "Top" node's menu.
 #texinfo_no_detailmenu = False
+
+
+# -- Intersphinx configuration -----------------------------------------
+
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/', None),
+    'numpy': ('http://docs.scipy.org/doc/numpy/', None),
+    'matplotlib': ('http://matplotlib.sourceforge.net', None),
+    'sklearn': ('http://scikit-learn.org/stable', None),
+}
+
+# -- Autodoc -------------------------------------------------------
+
+autodoc_default_flags = ['show-inheritance']
+
+# -- Autosummary -------------------------------------------------------
+
+import sphinx
+if sphinx.__version__ >= "0.7":
+    autosummary_generate = True
+
+# -- Numpydoc -------------------------------------------------------
+
+numpydoc_show_class_members = True
+numpydoc_show_inherited_class_members = True
+numpydoc_class_members_toctree = True
+numpydoc_use_plots = False
