@@ -1,6 +1,6 @@
-===============================
+====
 MLPy
-===============================
+====
 
 .. image:: https://img.shields.io/travis/evenmarbles/mlpy.svg
         :target: https://travis-ci.org/evenmarbles/mlpy
@@ -9,9 +9,9 @@ MLPy
         :target: https://pypi.python.org/pypi/mlpy
 
 
-A Machine Learning library for PYthon
+A Machine Learning library for Python
 
-* Free software: BSD license
+* Free software: MIT license
 * Documentation: https://mlpy.readthedocs.org.
 
 Features

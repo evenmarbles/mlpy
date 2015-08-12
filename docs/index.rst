@@ -4,12 +4,11 @@
    contain the root `toctree` directive.
 
 Welcome to MLPy's documentation!
-======================================
-
-Contents:
+================================
 
 .. toctree::
    :maxdepth: 2
+   :caption: Contents
 
    readme
    installation
@@ -17,6 +16,26 @@ Contents:
    contributing
    authors
    history
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Reference
+
+   agents
+   auxiliary
+   cluster
+   constants
+   environments
+   experiments
+   knowledgerep
+   learners
+   mdp
+   modules
+   optimize
+   planners
+   searchtools
+   stats
+   tools
 
 Indices and tables
 ==================

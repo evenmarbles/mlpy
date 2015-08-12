@@ -2,10 +2,35 @@
 # -*- coding: utf-8 -*-
 
 
+from os.path import join
+import numpy
+
 try:
     from setuptools import setup
+    from setuptools import Extension
 except ImportError:
     from distutils.core import setup
+    from distutils.extension import Extension
+
+include_dirs = [numpy.get_include()]
+
+hmm_src = join("mlpy", "libs", "hmmc")
+classifier_src = join("mlpy", "libs", "classifier")
+
+ext_modules = []
+ext_modules += [Extension("classifier",
+                          sources=[join(classifier_src, "classifier_module.cc"),
+                                   join(classifier_src, "classifier.cc"),
+                                   join(classifier_src, "c45tree.cc"),
+                                   join(classifier_src, "random.cc"),
+                                   join(classifier_src, "coord.cc"),
+                                   join(classifier_src, "array_helper.cc")],
+                          include_dirs=include_dirs), ]
+
+ext_modules += [Extension("hmmc",
+                          sources=[join(hmm_src, "hmmc_module.c"),
+                                   join(hmm_src, "hmm.c")],
+                          include_dirs=include_dirs), ]
 
 
 with open('README.rst') as readme_file:
@@ -15,21 +40,28 @@ with open('HISTORY.rst') as history_file:
     history = history_file.read().replace('.. :changelog:', '')
 
 requirements = [
-    # TODO: put package requirements here
+    'numpy>=1.6.2',
+    'scipy>=0.11',
+    'matplotlib',
+    'scikit-learn',
+    'six>=1.9.0',
 ]
 
 test_requirements = [
-    # TODO: put package test requirements here
+    'pytest',
 ]
+
+import mlpy
 
 setup(
     name='mlpy',
-    version='0.1.0',
-    description="A Machine Learning library for PYthon",
+    version=mlpy.__version__,
+    description="A machine learning library for Python",
     long_description=readme + '\n\n' + history,
     author="Astrid Jackson",
     author_email='ajackson@eecs.ucf.edu',
-    url='https://github.com/evenmarbles/mlpy',
+    url='https://readthedocs.org/builds/mlpy/',
+    download_url='https://github.com/evenmarbles/mlpy',
     packages=[
         'mlpy',
     ],
@@ -37,13 +69,13 @@ setup(
                  'mlpy'},
     include_package_data=True,
     install_requires=requirements,
-    license="BSD",
+    license="MIT",
     zip_safe=False,
-    keywords='mlpy',
+    keywords='machine learning,intelligent agents',
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
         'Intended Audience :: Developers',
-        'License :: OSI Approved :: BSD License',
+        'License :: OSI Approved :: MIT License',
         'Natural Language :: English',
         "Programming Language :: Python :: 2",
         'Programming Language :: Python :: 2.6',
