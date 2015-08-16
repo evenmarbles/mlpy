@@ -1370,10 +1370,11 @@ class Action(MDPPrimitive):
 
         if cls.description is not None:
             for e, config in cls.description.iteritems():
-                if np.asarray(config["value"]).shape != features.shape:
-                    ValueError("Dimension mismatch: array 'config['value']' is vector of length %d,"
-                               " but 'features' is a vector of length %d." % (np.asarray(config["value"]).shape[0],
-                                                                              features.shape[0]))
+                if config["value"] == features:
+                    if np.asarray(config["value"]).shape != features.shape:
+                        ValueError("Dimension mismatch: array 'config['value']' is vector of length %d,"
+                                   " but 'features' is a vector of length %d." % (np.asarray(config["value"]).shape[0],
+                                                                                  features.shape[0]))
                 if config["value"] == features or config["value"] == "*":
                     return e
 

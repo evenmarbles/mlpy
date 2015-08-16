@@ -719,7 +719,7 @@ PyObject * PyC45Tree_trainInstance(PyC45TreeObject *self, PyObject *args, PyObje
 	// allocate memory for input
 	e->input = new std::vector<double>();
 
-	int dim = PyArray_DIMS(instance->in_)[0];
+	int dim = PyArray_DIM(instance->in_, 0);
 	double* in = pyvector_to_Carrayptrs(instance->in_, 1, dim);
 
 	e->input->assign(in, in + dim);
@@ -841,7 +841,7 @@ PyObject * PyC45Tree_trainInstances(PyC45TreeObject *self, PyObject *args, PyObj
 			// allocate memory for input
 			e->input = new std::vector<double>();
 
-			int dim = PyArray_DIMS(instance->in_)[0];
+			int dim = PyArray_DIM(instance->in_, 0);
 			double* in = pyvector_to_Carrayptrs(instance->in_, 1, dim);
 
 			e->input->assign(in, in + dim);
@@ -955,7 +955,7 @@ PyObject * PyC45Tree_testInstance(PyC45TreeObject *self, PyObject *args, PyObjec
 		return retval;
 	}
 
-	int dim = PyArray_DIMS(in_)[0];
+	int dim = PyArray_DIM(in_, 0);
 	double* in = pyvector_to_Carrayptrs(in_, 1, dim);
 	input.assign(in, in + dim);
 

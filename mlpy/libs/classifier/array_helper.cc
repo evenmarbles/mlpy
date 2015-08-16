@@ -62,8 +62,8 @@ double **pydouble2Darray_to_Carrayptrs(PyArrayObject *arrayin)
 	double **c, *a;
 	int i, n, m;
 
-	n = PyArray_DIMS(arrayin)[0];
-	m = PyArray_DIMS(arrayin)[1];
+	n = PyArray_DIM(arrayin, 0);
+	m = PyArray_DIM(arrayin, 1);
 	c = ptrdoublevector(n);
 	a = (double *)PyArray_DATA(arrayin);  /* pointer to arrayin data as double */
 	for (i = 0; i<n; i++)  {

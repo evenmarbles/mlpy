@@ -35,6 +35,7 @@ Welcome to MLPy's documentation!
    planners
    searchtools
    stats
+   stats.dbn
    tools
 
 Indices and tables

@@ -3,7 +3,10 @@
 #include <math.h>
 
 #include "Python.h"
+
+#define NPY_NO_DEPRECATED_API NPY_API_VERSION
 #include "numpy/arrayobject.h"
+
 #include "hmmc_module.h"
 #include "hmm.h"
 
@@ -57,25 +60,25 @@ static PyObject * forward_wrapper(PyObject * self, PyObject * args)
 	if (not_double2Darray(pyobslik)) return NULL;
 
 	/* Get the dimensions of the input */
-	K = pyinit_state_distrib->dimensions[0];
-	if (pytransmat->dimensions[0] != K)
+	K = PyArray_DIM(pyinit_state_distrib, 0);
+	if (PyArray_DIM(pytransmat, 0) != K)
 		PyErr_SetString(PyExc_ValueError, "The transition matrix must be of size KxK.");
-	if (pytransmat->dimensions[1] != K)
+	if (PyArray_DIM(pytransmat, 1) != K)
 		PyErr_SetString(PyExc_ValueError, "The transition matrix must be of size KxK.");
 
-	dims[0] = pyobslik->dimensions[0];
+	dims[0] = PyArray_DIM(pyobslik, 0);
 	if (dims[0] != K)
 		PyErr_SetString(PyExc_ValueError, "The obslik must have K rows.");
-	T = dims[1] = pyobslik->dimensions[1];
+	T = dims[1] = PyArray_DIM(pyobslik, 1);
 
 	/* Make a new double array of same dimension */
 	pyalpha = (PyArrayObject *)PyArray_FromDims(2, dims, NPY_DOUBLE);
 
 	/* Change contiguous arrays into C *arrays   */
-	init_state_distrib = pyvector_to_Carrayptrs(pyinit_state_distrib, 1, K);
-	transmat = pyvector_to_Carrayptrs(pytransmat, K, K);
-	obslik = pyvector_to_Carrayptrs(pyobslik, K, T);
-	alpha = pyvector_to_Carrayptrs(pyalpha, K, T);
+	init_state_distrib = pyvector_to_Carrayptrs(pyinit_state_distrib);
+	transmat = pyvector_to_Carrayptrs(pytransmat);
+	obslik = pyvector_to_Carrayptrs(pyobslik);
+	alpha = pyvector_to_Carrayptrs(pyalpha);
 
 	loglik = forward(K, T, init_state_distrib, transmat, obslik, alpha);
 
@@ -112,20 +115,20 @@ static PyObject * backward_wrapper(PyObject * self, PyObject * args)
 	if (not_double2Darray(pyalpha)) return NULL;
 
 	/* Get the dimensions of the input */
-	K = pyalpha->dimensions[0];
-	if (pytransmat->dimensions[0] != K)
+	K = PyArray_DIM(pyalpha, 0);
+	if (PyArray_DIM(pytransmat, 0) != K)
 		PyErr_SetString(PyExc_ValueError, "The transition matrix must be of size KxK.");
-	if (pytransmat->dimensions[1] != K)
+	if (PyArray_DIM(pytransmat, 1) != K)
 		PyErr_SetString(PyExc_ValueError, "The transition matrix must be of size KxK.");
 
-	dims[0] = pyobslik->dimensions[0];
+	dims[0] = PyArray_DIM(pyobslik, 0);
 	if (dims[0] != K)
 		PyErr_SetString(PyExc_ValueError, "The obslik must have K rows.");
-	T = dims[1] = pyobslik->dimensions[1];
+	T = dims[1] = PyArray_DIM(pyobslik, 1);
 
-	if (pyalpha->dimensions[0] != K)
+	if (PyArray_DIM(pyalpha, 0) != K)
 		PyErr_SetString(PyExc_ValueError, "The alpha matrix must have K rows.");
-	if (pyalpha->dimensions[1] != T)
+	if (PyArray_DIM(pyalpha, 1) != T)
 		PyErr_SetString(PyExc_ValueError, "The alpha matrix must have T colunns.");
 
 	/* Make a new double vector of same dimension */
@@ -133,11 +136,11 @@ static PyObject * backward_wrapper(PyObject * self, PyObject * args)
 	pybeta = (PyArrayObject *)PyArray_FromDims(2, dims, NPY_DOUBLE);
 
 	/* Change contiguous arrays into C *arrays   */
-	transmat = pyvector_to_Carrayptrs(pytransmat, K, K);
-	obslik = pyvector_to_Carrayptrs(pyobslik, K, T);
-	alpha = pyvector_to_Carrayptrs(pyalpha, K, T);
-	gamma = pyvector_to_Carrayptrs(pygamma, K, T);
-	beta = pyvector_to_Carrayptrs(pybeta, K, T);
+	transmat = pyvector_to_Carrayptrs(pytransmat);
+	obslik = pyvector_to_Carrayptrs(pyobslik);
+	alpha = pyvector_to_Carrayptrs(pyalpha);
+	gamma = pyvector_to_Carrayptrs(pygamma);
+	beta = pyvector_to_Carrayptrs(pybeta);
 
 	backward(K, T, transmat, obslik, alpha, gamma, beta);
 
@@ -181,16 +184,16 @@ static PyObject * fwdbkw_wrapper(PyObject * self, PyObject * args)
 	if (not_double2Darray(pyobslik)) return NULL;
 
 	/* Get the dimensions of the input */
-	K = pyinit_state_distrib->dimensions[0];
-	if (pytransmat->dimensions[0] != K)
+	K = PyArray_DIM(pyinit_state_distrib, 0);
+	if (PyArray_DIM(pytransmat, 0) != K)
 		PyErr_SetString(PyExc_ValueError, "The transition matrix must be of size KxK.");
-	if (pytransmat->dimensions[1] != K)
+	if (PyArray_DIM(pytransmat, 1) != K)
 		PyErr_SetString(PyExc_ValueError, "The transition matrix must be of size KxK.");
 
-	tmp = dims[0] = pyobslik->dimensions[0];
+	tmp = dims[0] = PyArray_DIM(pyobslik, 0);
 	if (tmp != K)
 		PyErr_SetString(PyExc_ValueError, "The obslik must have K rows.");
-	T = dims[1] = pyobslik->dimensions[1];
+	T = dims[1] = PyArray_DIM(pyobslik, 1);
 
 	/* Make a new double vector of same dimension */
 	pygamma = (PyArrayObject *)PyArray_FromDims(2, dims, NPY_DOUBLE);
@@ -198,12 +201,12 @@ static PyObject * fwdbkw_wrapper(PyObject * self, PyObject * args)
 	pybeta = (PyArrayObject *)PyArray_FromDims(2, dims, NPY_DOUBLE);
 
 	/* Change contiguous arrays into C *arrays   */
-	init_state_distrib = pyvector_to_Carrayptrs(pyinit_state_distrib, 1, K);
-	transmat = pyvector_to_Carrayptrs(pytransmat, K, K);
-	obslik = pyvector_to_Carrayptrs(pyobslik, K, T);
-	alpha = pyvector_to_Carrayptrs(pyalpha, K, T);
-	gamma = pyvector_to_Carrayptrs(pygamma, K, T);
-	beta = pyvector_to_Carrayptrs(pybeta, K, T);
+	init_state_distrib = pyvector_to_Carrayptrs(pyinit_state_distrib);
+	transmat = pyvector_to_Carrayptrs(pytransmat);
+	obslik = pyvector_to_Carrayptrs(pyobslik);
+	alpha = pyvector_to_Carrayptrs(pyalpha);
+	gamma = pyvector_to_Carrayptrs(pygamma);
+	beta = pyvector_to_Carrayptrs(pybeta);
 
 	loglik = fwdbkw(K, T, init_state_distrib, transmat, obslik, gamma, alpha, beta);
 
@@ -251,24 +254,24 @@ static PyObject * compueTwoSliceSum_wrapper(PyObject * self, PyObject * args)
 
 	/* Get the dimensions of the input */
 	dims[2];
-	K = dims[0] = dims[1] = pyalpha->dimensions[0];
-	T = pyalpha->dimensions[1];
-	if (pybeta->dimensions[0] != K || pybeta->dimensions[1] != T)
+	K = dims[0] = dims[1] = PyArray_DIM(pyalpha, 0);
+	T = PyArray_DIM(pyalpha, 1);
+	if (PyArray_DIM(pybeta, 0) != K || PyArray_DIM(pybeta, 1) != T)
 		PyErr_SetString(PyExc_ValueError, "Input sizes must agree.");
-	if (pytransmat->dimensions[0] != K || pytransmat->dimensions[1] != K)
+	if (PyArray_DIM(pytransmat, 0) != K || PyArray_DIM(pytransmat, 1) != K)
 		PyErr_SetString(PyExc_ValueError, "Input sizes must agree.");
-	if (pyobslik->dimensions[0] != K || pyobslik->dimensions[1] != T)
+	if (PyArray_DIM(pyobslik, 0) != K || PyArray_DIM(pyobslik, 1) != T)
 		PyErr_SetString(PyExc_ValueError, "Input sizes must agree.");
 
 	/* Make a new double vector of same dimension */
 	pyxisummed = (PyArrayObject *)PyArray_FromDims(2, dims, NPY_DOUBLE);
 
 	/* Change contiguous arrays into C *arrays   */
-	alpha = pyvector_to_Carrayptrs(pyalpha, K, T);
-	beta = pyvector_to_Carrayptrs(pybeta, K, T);
-	transmat = pyvector_to_Carrayptrs(pytransmat, K, K);
-	obslik = pyvector_to_Carrayptrs(pyobslik, K, T);
-	xisummed = pyvector_to_Carrayptrs(pyxisummed, K, K);
+	alpha = pyvector_to_Carrayptrs(pyalpha);
+	beta = pyvector_to_Carrayptrs(pybeta);
+	transmat = pyvector_to_Carrayptrs(pytransmat);
+	obslik = pyvector_to_Carrayptrs(pyobslik);
+	xisummed = pyvector_to_Carrayptrs(pyxisummed);
 
 	b = (double *)malloc(K*sizeof(double));
 	xit = (double *)malloc(K*K*sizeof(double));	/* temporary storage */
@@ -311,6 +314,8 @@ static PyObject * viterbi_wrapper(PyObject * self, PyObject * args)
 	return Py_BuildValue("f", 0.0f);
 }
 
+
+
 /* #### Vector Utility functions ######################### */
 
 /* ==== Make a Python Array Obj. from a PyObject, ================
@@ -320,25 +325,22 @@ the original was not a double type or contiguous
 caller of this routines caller using return PyArray_Return(obj) or
 PyArray_BuildValue with the "N" construct   !!!
 */
-PyArrayObject *pyvector(PyObject *objin, int N, int M)  {
+PyArrayObject *pyvector(PyObject *objin)  {
 	return (PyArrayObject *)PyArray_ContiguousFromObject(objin,
-		NPY_DOUBLE, N, M);
+		NPY_DOUBLE, 1, 1);
 }
-
 /* ==== Create 1D Carray from PyArray ======================
 Assumes PyArray is contiguous in memory.             */
-double *pyvector_to_Carrayptrs(PyArrayObject *arrayin, int N, int M)  {
-	PyArrayObject *pyarrayin = arrayin;
-	if (N != 1 && M != 1) {
-		pyarrayin = pyvector(arrayin, N, M);
-	}
-	return (double *)pyarrayin->data;  /* pointer to arrayin data as double */
-}
+double *pyvector_to_Carrayptrs(PyArrayObject *arrayin)  {
+	//int i, n;
 
+	//n = PyArray_DIM(arrayin, 0);
+	return (double *)PyArray_DATA(arrayin);  /* pointer to arrayin data as double */
+}
 /* ==== Check that PyArrayObject is a double (Float) type and a vector ==============
 return 1 if an error and raise exception */
 int  not_doublevector(PyArrayObject *vec)  {
-	if (vec->descr->type_num != NPY_DOUBLE || vec->nd != 1)  {
+	if (PyArray_TYPE(vec) != NPY_DOUBLE || PyArray_NDIM(vec) != 1)  {
 		PyErr_SetString(PyExc_ValueError,
 			"In not_doublevector: array must be of type Float and 1 dimensional (n).");
 		return 1;
@@ -346,63 +348,57 @@ int  not_doublevector(PyArrayObject *vec)  {
 	return 0;
 }
 
-/* #### Double Array Utility functions ######################### */
+/* #### Matrix Utility functions ######################### */
 
-/* ==== Make a Python double Array Obj. from a PyObject, ================
-generates a 2D integer array w/ contiguous memory which may be a new allocation if
-the original was not an integer type or contiguous
+/* ==== Make a Python Array Obj. from a PyObject, ================
+generates a double matrix w/ contiguous memory which may be a new allocation if
+the original was not a double type or contiguous
 !! Must DECREF the object returned from this routine unless it is returned to the
 caller of this routines caller using return PyArray_Return(obj) or
 PyArray_BuildValue with the "N" construct   !!!
 */
-PyArrayObject *pydouble2Darray(PyObject *objin, int N, int M)  {
+PyArrayObject *pydouble2Darray(PyObject *objin)  {
 	return (PyArrayObject *)PyArray_ContiguousFromObject(objin,
-		NPY_DOUBLE, N, M);
+		NPY_DOUBLE, 2, 2);
 }
-
-/* ==== Create double 2D Carray from PyArray ======================
+/* ==== Create Carray from PyArray ======================
 Assumes PyArray is contiguous in memory.
 Memory is allocated!                                    */
 double **pydouble2Darray_to_Carrayptrs(PyArrayObject *arrayin)  {
 	double **c, *a;
 	int i, n, m;
 
-	n = arrayin->dimensions[0];
-	m = arrayin->dimensions[1];
-	c = ptrdoublevector(n);
-	a = (double *)arrayin->data;  /* pointer to arrayin data as double */
+	n = PyArray_DIM(arrayin, 0);
+	m = PyArray_DIM(arrayin, 1);
+	c = ptrvector(n);
+	a = (double *)PyArray_DATA(arrayin);  /* pointer to arrayin data as double */
 	for (i = 0; i<n; i++)  {
 		c[i] = a + i*m;
 	}
 	return c;
 }
-
-/* ==== Allocate a a *int (vec of pointers) ======================
-Memory is Allocated!  See void free_Carray(int ** )                  */
-double **ptrdoublevector(long n)  {
+/* ==== Allocate a double *vector (vec of pointers) ======================
+Memory is Allocated!  See void free_Carray(double ** )                  */
+double **ptrvector(long n)  {
 	double **v;
 	v = (double **)malloc((size_t)(n*sizeof(double)));
 	if (!v)   {
-		printf("In **ptrintvector. Allocation of memory for int array failed.");
+		printf("In **ptrvector. Allocation of memory for double array failed.");
 		exit(0);
 	}
 	return v;
 }
-
-/* ==== Free an int *vector (vec of pointers) ========================== */
-void free_Cdouble2Darrayptrs(double **v)  {
+/* ==== Free a double *vector (vec of pointers) ========================== */
+void free_Carrayptrs(double **v)  {
 	free((char*)v);
 }
-
-/* ==== Check that PyArrayObject is an int (integer) type and a 2D array ==============
-return 1 if an error and raise exception
-Note:  Use NPY_DOUBLE for NumPy integer array, not NP_INT      */
-int not_double2Darray(PyArrayObject *mat)  {
-	if (mat->descr->type_num != NPY_DOUBLE || mat->nd != 2)  {
+/* ==== Check that PyArrayObject is a double (Float) type and a matrix ==============
+return 1 if an error and raise exception */
+int  not_double2Darray(PyArrayObject *mat)  {
+	if (PyArray_TYPE(mat) != NPY_DOUBLE || PyArray_NDIM(mat) != 2)  {
 		PyErr_SetString(PyExc_ValueError,
-			"In not_double2Darray: array must be of type int and 2 dimensional (n x m).");
+			"In not_double2Darray: array must be of type Float and 2 dimensional (n x m).");
 		return 1;
 	}
 	return 0;
 }
-

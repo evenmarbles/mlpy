@@ -575,7 +575,6 @@ class CASML(IMDPModel):
         states. Default is DefaultProbaCalcMethod.
 
     """
-            
     def __init__(self, case_template, rho=None, tau=None, sigma=None, ncomponents=1,
                  revision_method_params=None, retention_method_params=None, 
                  case_base_params=None, hmm_params=None, proba_calc_method=None):
@@ -639,8 +638,27 @@ class CASML(IMDPModel):
         if self._hmm._fit_X is None:
             x = np.array([obs])
         else:
+            # self._hmm.startprob = None
+            # self._hmm.transmat = None
+            # self._hmm.emission = None
             x = np.vstack([self._hmm._fit_X, [obs]])
         self._hmm.fit(x, n_init=n_init)
+
+    def update(self, experience):
+        """Update the model with the agent's experience.
+
+        Parameters
+        ----------
+        experience : Experience
+            The agent's experience, consisting of state, action, next state(, and reward).
+
+        Returns
+        -------
+        bool :
+            Return True if the model has changed, False otherwise.
+
+        """
+        self._cb_t.run(self._cb_t.case_from_data(experience))
 
     def predict_proba(self, state, action):
         """Predict the probability distribution.
@@ -680,7 +698,7 @@ class CASML(IMDPModel):
                 sequences[i, 0] = np.array(current_state)
 
                 delta_state = cm.case["delta_state"]
-                sequences[i, 1] = np.array(np.add(current_state, delta_state))
+                sequences[i, 1] = np.asarray(current_state + delta_state)
 
         # use HMM to calculate probability for observing sequence <current_state, next_state>
         # noinspection PyTypeChecker

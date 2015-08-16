@@ -10,13 +10,13 @@ static PyObject * compueTwoSliceSum_wrapper(PyObject * self, PyObject * args);
 static PyObject * viterbi_wrapper(PyObject * self, PyObject * args);
 
 /* .... C vector utility functions ..................*/
-PyArrayObject *pyvector(PyObject *objin, int N, int M);
-double *pyvector_to_Carrayptrs(PyArrayObject *arrayin, int N, int M);
+PyArrayObject *pyvector(PyObject *objin);
+double *pyvector_to_Carrayptrs(PyArrayObject *arrayin);
 int  not_doublevector(PyArrayObject *vec);
 
 /* .... C 2D int array utility functions ..................*/
-PyArrayObject *pydouble2Darray(PyObject *objin, int N, int M);
+PyArrayObject *pydouble2Darray(PyObject *objin);
 double **pydouble2Darray_to_Carrayptrs(PyArrayObject *arrayin);
-double **ptrdoublevector(long n);
-void free_Cdouble2Darrayptrs(double **v);
+double **ptrvector(long n);
+void free_Carrayptrs(double **v);
 int  not_double2Darray(PyArrayObject *mat);

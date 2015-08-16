@@ -1,6 +1,7 @@
 from __future__ import division, print_function, absolute_import
 
 import math
+import warnings
 import numpy as np
 
 from abc import ABCMeta, abstractmethod
@@ -248,6 +249,11 @@ class NeighborSimilarity(ISimilarity):
 
         self._n_neighbors = n_neighbors
         self._radius = radius
+
+        if self._n_neighbors is not None:
+            if math.floor(self._n_neighbors) != self._n_neighbors:
+                warnings.warn("k has been truncated to %d." % int(self._n_neighbors))
+            self._n_neighbors = int(self._n_neighbors)
 
         if algorithm is not None:
             if algorithm not in ["ball_tree", "kd_tree", "brute", "auto"]:
