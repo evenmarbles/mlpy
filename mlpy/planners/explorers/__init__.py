@@ -128,7 +128,7 @@ class IExplorer(object):
 
         Returns
         -------
-        Action :
+        MDPAction :
             The next action to taken.
 
         Raises

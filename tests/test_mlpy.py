@@ -52,10 +52,10 @@ class TestHMM(object):
 class TestCaseBase(object):
 
     def setup_method(self, _):
-        from mlpy.mdp.stateaction import State, Action
-        State.nfeatures = None
-        Action.description = None
-        Action.nfeatures = None
+        from mlpy.mdp.stateaction import MDPState, MDPAction
+        MDPState.nfeatures = None
+        MDPAction.description = None
+        MDPAction.nfeatures = None
 
         case_template = {
             "state": {
@@ -85,13 +85,13 @@ class TestCaseBase(object):
         self.data = load_from_file(os.path.join(os.getcwd(), 'tests', 'data/jointsAndActionsData.pkl'))
 
     def test_cb_run(self):
-        from mlpy.mdp.stateaction import Experience, State, Action
+        from mlpy.mdp.stateaction import Experience, MDPState, MDPAction
 
         for i in xrange(len(self.data.itervalues().next())):
             for j in xrange(len(self.data.itervalues().next()[0][i]) - 1):
                 # noinspection PyTypeChecker
-                experience = Experience(State(self.data["states"][i][:, j]), Action(self.data["actions"][i][:, j]),
-                                        State(self.data["states"][i][:, j + 1]))
+                experience = Experience(MDPState(self.data["states"][i][:, j]), MDPAction(self.data["actions"][i][:, j]),
+                                        MDPState(self.data["states"][i][:, j + 1]))
                 self.cb.run(self.cb.case_from_data(experience))
 
     def teardown_method(self, _):
@@ -101,10 +101,10 @@ class TestCaseBase(object):
 class TestCASML(object):
 
     def setup_method(self, _):
-        from mlpy.mdp.stateaction import State, Action
-        State.nfeatures = None
-        Action.description = None
-        Action.nfeatures = None
+        from mlpy.mdp.stateaction import MDPState, MDPAction
+        MDPState.nfeatures = None
+        MDPAction.description = None
+        MDPAction.nfeatures = None
 
         case_template = {
             "state": {
@@ -128,7 +128,8 @@ class TestCASML(object):
         }
 
         from mlpy.mdp.continuous.casml import CASML
-        self.model = CASML(case_template, tau=1e-5, sigma=1e-5, ncomponents=2)
+        from mlpy.mdp.continuous import CbTData
+        self.model = CASML(CbTData(case_template, tau=1e-5, sigma=1e-5), ncomponents=2)
 
         from mlpy.auxiliary.io import load_from_file
         data = load_from_file(os.path.join(os.getcwd(), 'tests', 'data/jointsAndActionsData.pkl'))
@@ -139,9 +140,9 @@ class TestCASML(object):
         self.model.fit(np.delete(data["states"][0], 10, 1), np.delete(data["actions"][0], 10, 1))
 
     def test_predict_proba(self):
-        from mlpy.mdp.stateaction import State, Action
+        from mlpy.mdp.stateaction import MDPState, MDPAction
         # noinspection PyTypeChecker
-        self.model.predict_proba(State(self.unseen_state), Action(self.unseen_action))
+        self.model.predict_proba(MDPState(self.unseen_state), MDPAction(self.unseen_action))
 
     def teardown_method(self, _):
         pass

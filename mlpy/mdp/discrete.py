@@ -12,7 +12,7 @@ from ..modules import UniqueModule
 from ..modules.patterns import RegistryInterface
 from ..tools.misc import Waiting
 from ..libs import classifier
-from .stateaction import StateData, State, Action, RewardFunction
+from .stateaction import MDPStateData, MDPState, MDPAction, RewardFunction
 from . import IMDPModel
 
 __all__ = ['ExplorerFactory', 'RMaxExplorer', 'LeastVisitedBonusExplorer', 'UnknownBonusExplorer',
@@ -113,7 +113,7 @@ class RMaxExplorer(UniqueModule):
 
         Parameters
         ----------
-        model : StateActionInfo
+        model : MDPStateActionInfo
             The state-action information.
 
         """
@@ -188,7 +188,7 @@ class LeastVisitedBonusExplorer(RMaxExplorer):
 
         Parameters
         ----------
-        model : StateActionInfo
+        model : MDPStateActionInfo
             The states-action information.
 
         """
@@ -224,7 +224,7 @@ class UnknownBonusExplorer(RMaxExplorer):
 
         Parameters
         ----------
-        model : StateActionInfo
+        model : MDPStateActionInfo
             The states-action information.
 
         """
@@ -238,9 +238,9 @@ class DiscreteModel(IMDPModel):
 
     Parameters
     ----------
-    actions : list[Action] or dict[State, list[Action]
-        The available actions. If not given, the actions are read
-        from the Action description.
+    actions : list[MDPAction] or dict[MDPState, list[MDPAction]], optional
+        The available actions. If not provided, the actions are read
+        from the MDPAction description.
 
     """
     @property
@@ -249,7 +249,7 @@ class DiscreteModel(IMDPModel):
 
         Returns
         -------
-        dict[State, StateData] :
+        dict[MDPState, MDPStateData] :
             The state space.
         """
         return self._statespace
@@ -260,36 +260,22 @@ class DiscreteModel(IMDPModel):
         #: The number of states in the model.
         self._nstates = 0
         self._statespace = {}
-        """:type: dict[State, StateData]"""
+        """:type: dict[MDPState, MDPStateData]"""
 
-        self._actions = self._set_actions(actions)
-        """:type: dict[State, list[Action]] | list[Action]"""
+        self._actions = actions
+        """:type: dict[MDPState, list[MDPAction]] | list[MDPAction]"""
 
-    def __getstate__(self):
-        data = super(DiscreteModel, self).__getstate__()
-        data.update({
-            '_statespace': self._statespace,
-            'actions': [a.name for a in self._actions]
-        })
-        return data
-
-    def __setstate__(self, d):
-        super(DiscreteModel, self).__setstate__(d)
-
-        for name, value in d.iteritems():
-            if name == 'actions':
-                name = '_actions'
-                value = self._set_actions(value)
-            setattr(self, name, value)
-
-        self._nstates = len(self._statespace)
+    def init(self):
+        """Initialize the MDP model."""
+        if self._actions is None:
+            self._actions = self._set_actions()
 
     def get_actions(self, state=None):
         """Retrieve the available actions for the given state.
 
         Parameters
         ----------
-        state : State
+        state : MDPState
             The state for which to get the actions.
 
         Returns
@@ -297,7 +283,14 @@ class DiscreteModel(IMDPModel):
         list :
             The actions that can be taken in this state.
 
+        Raises
+        ------
+        ValueError:
+            If the actions have not been initialized.
+
         """
+        if self._actions is None:
+            raise ValueError("Actions have not been initialized.")
         if isinstance(self._actions, dict):
             return self._actions[state]
         return self._actions
@@ -310,7 +303,7 @@ class DiscreteModel(IMDPModel):
 
         Parameters
         ----------
-        state : State
+        state : MDPState
             The state to add to the state space.
 
         Returns
@@ -321,7 +314,7 @@ class DiscreteModel(IMDPModel):
         """
         if state is not None and state not in self._statespace:
             self._nstates += 1
-            self._statespace[state] = StateData(self._nstates, self.get_actions(state))
+            self._statespace[state] = MDPStateData(self._nstates, self.get_actions(state))
             return True
 
         return False
@@ -344,15 +337,15 @@ class DiscreteModel(IMDPModel):
         """
         n = obs.shape[1]
         for i in range(n - 1):
-            state = State(obs[:, i], labels[i])
+            state = MDPState(obs[:, i], labels[i])
             self.add_state(state)
 
             if i == 0:
-                self._initial_dist.add_state(State(obs[:, i]))
+                self._initial_dist.add_state(MDPState(obs[:, i]))
 
-            action = Action(actions[:, i])
+            action = MDPAction(actions[:, i])
 
-            next_state = State(obs[:, i + 1], labels[i + 1])
+            next_state = MDPState(obs[:, i + 1], labels[i + 1])
             self.add_state(next_state)
 
             proba = self._statespace[state].models[action].transition_proba
@@ -404,9 +397,9 @@ class DiscreteModel(IMDPModel):
 
         Parameters
         ----------
-        state : State
+        state : MDPState
             The current state the robot is in.
-        action : Action
+        action : MDPAction
             The action perform in state `state`.
 
         Returns
@@ -433,7 +426,7 @@ class DiscreteModel(IMDPModel):
         self._logger.debug("============================== Transition probabilities ==============================")
         for state_rep in sorted_states:
             # noinspection PyTypeChecker
-            state = State.decode(state_rep)
+            state = MDPState.decode(state_rep)
             info = self._statespace[state]
             self._logger.debug("state={0}".format(state_rep))
             for act, model in info.models.iteritems():
@@ -457,7 +450,7 @@ class DiscreteModel(IMDPModel):
         self._logger.debug("============================== Rewards ==============================")
         for state_rep in sorted_states:
             # noinspection PyTypeChecker
-            state = State.decode(state_rep)
+            state = MDPState.decode(state_rep)
             info = self._statespace[state]
             self._logger.debug("state={0}".format(state_rep))
 
@@ -465,25 +458,25 @@ class DiscreteModel(IMDPModel):
                 self._logger.debug("   act={0}\treward={1}".format(act, model.reward_func.get(state)))
 
     # noinspection PyMethodMayBeStatic
-    def _set_actions(self, actions):
-        if not isinstance(Action.description, dict):
-            raise ValueError('Action.description not set')
+    def _set_actions(self):
+        """Read actions from the MDPAction description."""
+        if not isinstance(MDPAction.description, dict):
+            raise ValueError('MDPAction.description not set')
 
-        act_names = actions if actions is not None else Action.description.keys()
-
+        act_names = MDPAction.description.keys()
         if act_names is not None:
             if isinstance(act_names, dict):
                 actions = {}
                 for state, action_names in act_names.iteritems():
-                    s = State(eval(state))
+                    s = MDPState(eval(state))
                     actions[s] = []
                     for a in action_names:
                         # noinspection PyTypeChecker
-                        actions[s].append(Action(Action.description[a]["value"], a))
+                        actions[s].append(MDPAction(MDPAction.description[a]["value"], a))
             else:
                 actions = []
                 for a in act_names:
-                    actions.append(Action(Action.description[a]["value"], a))
+                    actions.append(MDPAction(MDPAction.description[a]["value"], a))
         else:
             raise ValueError('Actions required')
 
@@ -525,9 +518,9 @@ class DecisionTreeModel(DiscreteModel):
 
     Parameters
     ----------
-    actions : list[Action] | dict[State, list[Action]
+    actions : list[MDPAction] | dict[MDPState, list[MDPAction]
         The available actions. If not given, the actions are read from the
-        Action description.
+        MDPAction description.
     explorer_type : str
         The type of exploration policy to perform. Valid explorer types:
 
@@ -634,9 +627,8 @@ class DecisionTreeModel(DiscreteModel):
 
     def __getstate__(self):
         data = super(DiscreteModel, self).__getstate__()
-        data.update(self.__dict__.copy())
 
-        remove_list = ('_output_models', '_reward_model', '_rng', '_id', '_logger')
+        remove_list = ('_output_models', '_reward_model', '_rng')
         for key in remove_list:
             if key in data:
                 del data[key]
@@ -714,23 +706,23 @@ class DecisionTreeModel(DiscreteModel):
         n = obs.shape[1]
 
         for i in range(n - 1):
-            state = State(obs[:, i])
+            state = MDPState(obs[:, i])
             self.add_state(state)
 
-            action = Action(actions[:, i])
+            action = MDPAction(actions[:, i])
 
-            next_state = State(obs[:, i + 1])
+            next_state = MDPState(obs[:, i + 1])
             self.add_state(next_state)
 
             if i == 0:
-                self._initial_dist.add_state(State(obs[:, i]))
+                self._initial_dist.add_state(MDPState(obs[:, i]))
 
                 if self._use_reward_trees and rewards is not None:
                     reward_data = classifier.ClassPairList()
 
             cp = classifier.ClassPair(self._prepare_tree_input(state, action))
 
-            for j in range(State.nfeatures):
+            for j in range(MDPState.nfeatures):
                 if i == 0:
                     transition_data.append(classifier.ClassPairList())
                 cp.out = float(next_state[j] - state[j])
@@ -812,23 +804,23 @@ class DecisionTreeModel(DiscreteModel):
     def _init_mdp(self):
         """Initializes the decision trees for the MDP model."""
         if len(self._output_models) == 0:
-            for i in range(State.nfeatures):
+            for i in range(MDPState.nfeatures):
                 self._output_models.append(classifier.C45Tree(i, 1, 5, 0, 0, self._rng))
                 if self.DEBUG_TREE:
                     # noinspection PyPep8Naming
                     self._output_models[i].DTDEBUG = True
 
-                if len(self._fit_transition) < State.nfeatures:
+                if len(self._fit_transition) < MDPState.nfeatures:
                     self._fit_transition.append([])
 
-        if len(self._output_models) != State.nfeatures:
+        if len(self._output_models) != MDPState.nfeatures:
             self._logger.error(
                 "Error size mismatch between input vector and # trees {0}, {1}".format(len(self._output_models),
-                                                                                       State.nfeatures))
+                                                                                       MDPState.nfeatures))
             return False
 
         if self._use_reward_trees and self._reward_model is None:
-            self._reward_model = classifier.C45Tree(State.nfeatures, 1, 5, 0, 0, self._rng)
+            self._reward_model = classifier.C45Tree(MDPState.nfeatures, 1, 5, 0, 0, self._rng)
 
             if self._fit_reward is None:
                 self._fit_reward = []
@@ -877,7 +869,7 @@ class DecisionTreeModel(DiscreteModel):
                     for i, omodel in enumerate(self._output_models):
                         predictions.append(omodel.test_instance(tree_input))
 
-                    self._combine_results(0, [0.0] * State.nfeatures, State(np.asarray([0] * State.nfeatures)),
+                    self._combine_results(0, [0.0] * MDPState.nfeatures, MDPState(np.asarray([0] * MDPState.nfeatures)),
                                           tree_input, predictions, model, state)
 
                     if self._use_reward_trees:
@@ -905,9 +897,9 @@ class DecisionTreeModel(DiscreteModel):
 
         Parameters
         ----------
-        state : State
+        state : MDPState
             The state.
-        action : Action
+        action : MDPAction
             The action.
 \
         Returns
@@ -936,15 +928,15 @@ class DecisionTreeModel(DiscreteModel):
             The current index into the predictions.
         cum_probs: list[float]
             The cumulative probability.
-        t_next: State
+        t_next: MDPState
             The next state.
         tree_input: list[float]
             The original tree input.
         predictions: list[FloatMap]
             The predictions from the tree.
-        model: StateActionInfo
+        model: MDPStateActionInfo
             The model.
-        state: State
+        state: MDPState
             The current state.
         """
         for feature_val, prob in predictions[index].iteritems():
@@ -956,7 +948,7 @@ class DecisionTreeModel(DiscreteModel):
             cum_probs[index] = prob if index == 0 else cum_probs[index - 1] * prob
 
             # if this is the last feature, remember it in transition probabilities
-            if index == (State.nfeatures - 1) and cum_probs[index] > 0.0:
+            if index == (MDPState.nfeatures - 1) and cum_probs[index] > 0.0:
                 n = copy.deepcopy(t_next)
                 if n not in self._statespace:
                     if n.is_valid():

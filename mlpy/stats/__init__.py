@@ -21,6 +21,19 @@ Discrete distributions
 ============================  =================================================================
 
 
+Continuous random variables
+===========================
+
+.. toctree::
+   :hidden:
+
+   generated/mlpy.stats.random_floats
+
+============================  =================================================================
+:data:`.random_floats`        Return random floats in the half-open interval [0.0, 1.0) between *low* and *high*, inclusive.
+============================  =================================================================
+
+
 Conditional distributions
 =========================
 
@@ -117,6 +130,7 @@ Statistical functions
 """
 from ._stats import *
 from ._discrete import *
+from ._continuous import *
 from ._multivariate import *
 from ._conditional import *
 

@@ -111,6 +111,9 @@ def save_to_file(filename, data):
         The data to be saved.
 
     """
+    if filename is None:
+        return
+
     path = os.path.dirname(filename)
     if path and not os.path.exists(path):
         os.makedirs(path)

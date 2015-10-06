@@ -112,8 +112,19 @@ class FSMState(Module):
         super(FSMState, self).__init__()
         self._logger = LoggingMgr().get_logger(self._mid)
 
+    def __getstate__(self):
+        d = dict(self.__dict__)
+        remove_list = ['_logger']
+        for key in remove_list:
+            del d[key]
+        return d
+
+    def __setstate__(self, d):
+        self.__dict__.update(d)
+        self._logger = LoggingMgr().get_logger(self._mid)
+
     def enter(self, t, *args, **kwargs):
-        """State initialization.
+        """MDPState initialization.
 
         Parameters
         ----------
@@ -350,6 +361,25 @@ class StateMachine(Module):
         if onupdate is not None:
             for u in listify(onupdate):
                 self.add_onupdate(**u)
+
+    def __getstate__(self):
+        d = super(StateMachine, self).__getstate__()
+        remove_list = ['_logger', '_states', '_transitions', '_onupdate', '_events', '_current_state']
+        for key in remove_list:
+            del d[key]
+        return d
+
+    def __setstate__(self, d):
+        # TODO: currently the only way to solve the serialization problem
+        #   is to reload the variables from file due to the need of function serialization
+        super(StateMachine, self).__setstate__(d)
+        self._logger = LoggingMgr().get_logger(self._mid)
+
+        self._states = {}
+        self._transitions = {}
+        self._onupdate = {}
+        self._events = []
+        self._current_state = None
 
     def load_from_file(self, owner, filename, **kwargs):
         """Load the FSM from file.
@@ -768,25 +798,6 @@ class StateMachine(Module):
         """
         self._events = [x for x in self._events if not x.state.name == state_name] if state_name is not None else []
 
-    def reset(self, t, **kwargs):
-        """Reset the finite state machine and all registered states.
-
-        Parameters
-        ----------
-        t : float
-            The current time (sec).
-        kwargs : dict, optional
-            Non-positional parameters.
-
-        """
-        super(StateMachine, self).reset(t, **kwargs)
-
-        for s in self._states.itervalues():
-            s.reset(t, **kwargs)
-
-        self.set_state(self._initial)
-        self._current_state.enter(t)
-
     def enter(self, t):
         """Enter the current state.
 
@@ -812,25 +823,37 @@ class StateMachine(Module):
         """
         super(StateMachine, self).update(dt)
 
-        try:
-            # noinspection PyTypeChecker
-            self.post_event(self._current_state.update(dt))
-            if self._current_state.name in self._onupdate:
-                self._onupdate[self._current_state.name].execute(self)
-        except Exception as e:
-            self._logger.exception(e.message)
-
+        did_transitioned = False
         if self._events:
-            self._check_transition()
+            did_transitioned = self._check_transition()
+
+        if not did_transitioned:
+            try:
+                # noinspection PyTypeChecker
+                self.post_event(self._current_state.update(dt))
+                if self._current_state.name in self._onupdate:
+                    self._onupdate[self._current_state.name].execute(self)
+            except Exception as e:
+                self._logger.exception(e.message)
+
+            if self._events:
+                self._check_transition()
 
     def exit(self):
         """Exit the finite state machine."""
+        super(StateMachine, self).exit()
+
         self._current_state.exit()
 
     def _check_transition(self):
         """Check transitions.
 
         Transition on the first event found, which meets all conditions.
+
+        Returns
+        -------
+        bool :
+            Whether a transition fired or not.
 
         """
         state_name = self._current_state.name
@@ -841,4 +864,6 @@ class StateMachine(Module):
 
                 e.trigger_time = self._t
                 if t.execute(e):
-                    break
+                    return True
+
+        return False

@@ -66,12 +66,12 @@ class IProbaCalcMethod(object):
 
         Parameters
         ----------
-        states : dict[State, dict[str, int | float]]
+        states : dict[MDPState, dict[str, int | float]]
             The list of next states to consider.
 
         Returns
         -------
-        dict[State, dict[str, int | float]] :
+        dict[MDPState, dict[str, int | float]] :
             The updated states information including the probabilities.
 
         Raises
@@ -99,12 +99,12 @@ class DefaultProbaCalcMethod(IProbaCalcMethod):
 
         Parameters
         ----------
-        states : dict[State, dict[str, int | float]]
+        states : dict[MDPState, dict[str, int | float]]
             The list of next states to consider.
 
         Returns
         -------
-        dict[State, dict[str, int | float]] :
+        dict[MDPState, dict[str, int | float]] :
             The updated states information including the probabilities.
 
         """
@@ -131,7 +131,7 @@ class ProbabilityDistribution(object):
 
     def __init__(self, proba_calc_method=None):
         self._states = {}
-        """:type : dict[State,dict[str,int|float]]"""
+        """:type : dict[MDPState,dict[str,int|float]]"""
         self._dirty = False
         """:type: bool"""
 
@@ -197,7 +197,7 @@ class ProbabilityDistribution(object):
 
         Parameters
         ----------
-        state : State
+        state : MDPState
             An initial state.
 
         """
@@ -217,7 +217,7 @@ class ProbabilityDistribution(object):
 
         Parameters
         ----------
-        state : State
+        state : MDPState
             The state for which the probability is updated.
         proba : float
             The probability value to add to the state's probability.
@@ -234,7 +234,7 @@ class ProbabilityDistribution(object):
 
         Returns
         -------
-        dict[State, float] :
+        dict[MDPState, float] :
             A list of probabilities for all possible transitions.
         """
         if self._dirty:
@@ -251,7 +251,7 @@ class ProbabilityDistribution(object):
 
         Returns
         -------
-        State :
+        MDPState :
             The next state sampled from the probability distribution.
         """
         keys = self._states.keys()

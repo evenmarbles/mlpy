@@ -12,23 +12,13 @@ import pytest
 
 class TestMDPModel(object):
     def setup_method(self, _):
-        from mlpy.mdp.stateaction import Action
-        Action.description = None
-        Action.nfeatures = None
+        pass
 
     def test_model_creation(self):
         from mlpy.mdp import MDPModelFactory
+        from mlpy.mdp.continuous import CbTData
 
         # create discrete model
-        with pytest.raises(ValueError):
-            MDPModelFactory.create('discretemodel')
-
-        from mlpy.mdp.stateaction import Action
-        Action.description = {
-            'out': {'value': [-0.004]},
-            'in': {'value': [0.004]},
-            'kick': {'value': [-1.0]}
-        }
         MDPModelFactory.create('discretemodel')
 
         # create decision tree model
@@ -55,7 +45,7 @@ class TestMDPModel(object):
                 "is_index": False,
             }
         }
-        MDPModelFactory.create('casml', case_template)
+        MDPModelFactory.create('casml', CbTData(case_template))
 
     def teardown_method(self, _):
         pass

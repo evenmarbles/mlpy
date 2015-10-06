@@ -69,6 +69,7 @@ Miscellaneous
    ~misc.remove_key
    ~misc.listify
    ~misc.stdout_redirected
+   ~misc.columnize
 
 
 Plotting

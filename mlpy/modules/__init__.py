@@ -93,8 +93,17 @@ class UniqueModule(object):
     def __repr__(self):
         return "<%s '%s'>" % (self.__class__.__name__, self._mid)
 
+    def __getstate__(self):
+        data = self.__dict__.copy()
+        del data['_mid']
+        return data
+
     def __setstate__(self, d):
-        self._mid = self._generate()
+        for name, value in d.iteritems():
+            setattr(self, name, value)
+
+        if not hasattr(self, '_mid'):
+            self._mid = self._generate()
 
     def _generate(self):
         """Generate unique identifier."""
@@ -161,19 +170,10 @@ class Module(UniqueModule):
         self._t = 0.0
         """type: float"""
 
-    # noinspection PyMethodMayBeStatic,PyUnusedLocal
-    def reset(self, t, **kwargs):
-        """Reset the module.
-
-        Parameters
-        ----------
-        t : float
-            The current time (sec)
-        kwargs : dict
-            Additional non-positional parameters.
-
-        """
-        self._t = t
+    # noinspection PyMethodMayBeStatic
+    def init(self):
+        """Initialize the module."""
+        pass
 
     def enter(self, t):
         """Enter the module and perform initialization tasks.
@@ -199,5 +199,5 @@ class Module(UniqueModule):
 
     # noinspection PyMethodMayBeStatic
     def exit(self):
-        """Exit the module and perform cleanup tasks."""
+        """Perform cleanup tasks and exit the module."""
         pass

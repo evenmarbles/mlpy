@@ -72,11 +72,11 @@ State and action information
 
    ~stateaction.Experience
    ~stateaction.RewardFunction
-   ~stateaction.StateActionInfo
-   ~stateaction.StateData
+   ~stateaction.MDPStateActionInfo
+   ~stateaction.MDPStateData
    ~stateaction.MDPPrimitive
-   ~stateaction.State
-   ~stateaction.Action
+   ~stateaction.MDPState
+   ~stateaction.MDPAction
 
 """
 from __future__ import division, print_function, absolute_import
@@ -180,15 +180,17 @@ class IMDPModel(UniqueModule):
         """:type: ProbabilityDistribution"""
 
     def __getstate__(self):
-        return {'_initial_dist': self._initial_dist}
+        data = super(IMDPModel, self).__getstate__()
+        del data['_logger']
+        return data
 
     def __setstate__(self, d):
         super(IMDPModel, self).__setstate__(d)
-
-        for name, value in d.iteritems():
-            setattr(self, name, value)
-
         self._logger = LoggingMgr().get_logger(self._mid)
+
+    def init(self):
+        """Initialize the MDP model."""
+        pass
 
     @abstractmethod
     def fit(self, obs, actions, **kwargs):
@@ -253,9 +255,9 @@ class IMDPModel(UniqueModule):
 
         Parameters
         ----------
-        state : State
+        state : MDPState
             The current state the robot is in.
-        action : Action
+        action : MDPAction
             The action perform in state `state`.
 
         Returns
@@ -284,14 +286,14 @@ class IMDPModel(UniqueModule):
 
         Parameters
         ----------
-        state : State, optional
+        state : MDPState, optional
             The current state the robot is in.
-        action : Action, optional
+        action : MDPAction, optional
             The action perform in state `state`.
 
         Returns
         -------
-        State :
+        MDPState :
             The sampled next state.
 
         """
@@ -301,7 +303,7 @@ class IMDPModel(UniqueModule):
         transition_proba = self.predict_proba(state, action)
         if not transition_proba:
             # a state is reached for which no empirical transition data exists
-            self._logger.debug("State {0} is unknown and has no transition probabilities".format(state))
+            self._logger.debug("MDPState {0} is unknown and has no transition probabilities".format(state))
             return None
 
         next_state = None

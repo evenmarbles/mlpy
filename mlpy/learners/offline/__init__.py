@@ -39,11 +39,9 @@ class IOfflineLearner(ILearner):
         If None is given, the learner state is not saved. Default is None.
 
     """
-
     @property
     def type(self):
         """This learner is of type `offline`.
-
 
         Returns
         -------
@@ -55,6 +53,29 @@ class IOfflineLearner(ILearner):
 
     def __init__(self, filename=None):
         super(IOfflineLearner, self).__init__(filename)
+
+    def end(self):
+        """End the episode.
+
+        Perform all end of episode tasks and save the state of the
+        learner to file.
+
+        """
+        super(IOfflineLearner, self).end()
+
+    def learn(self):
+        """Learn a policy from the experience.
+
+        Perform the learning step to derive a new policy taking the
+        latest experience into account.
+
+        Raises
+        ------
+        NotImplementedError
+            If the child class does not implement this function.
+
+        """
+        raise NotImplementedError
 
 
 from .irl import *

@@ -24,9 +24,10 @@ Learning algorithms (:mod:`mlpy.learners`)
 """
 from __future__ import division, print_function, absolute_import
 
-from abc import abstractmethod
+from abc import abstractmethod, abstractproperty
 from ..modules.patterns import RegistryInterface
 from ..modules import UniqueModule
+from ..tools.log import LoggingMgr
 
 
 class LearnerFactory(object):
@@ -67,11 +68,9 @@ class LearnerFactory(object):
                 Performs q-learning, a reinforcement learning variant. A :class:`.QLearner`
                 module is created.
 
-            rldtlearner
-                The learner performs reinforcement learning with decision trees (RLDT),
-                a method introduced by Hester, Quinlan, and Stone which builds a generalized
-                model for the transitions and rewards of the environment. A :class:`.RLDTLearner`
-                module is created.
+            modelbasedlearner
+                The model based learner performs reinforcement learning using the specified model
+                and planner. A :class:`.ModelBasedLearner` module is created.
 
             apprenticeshiplearner
                 The learner performs apprenticeship learning via inverse reinforcement
@@ -127,6 +126,7 @@ class LearnerFactory(object):
         return learner
 
 
+# noinspection PyMethodMayBeStatic
 class ILearner(UniqueModule):
     """
     The learner interface.
@@ -142,7 +142,7 @@ class ILearner(UniqueModule):
     """
     __metaclass__ = RegistryInterface
 
-    @property
+    @abstractproperty
     def type(self):
         """The type of the learner (i.e., `online` and `offline`).
 
@@ -166,38 +166,29 @@ class ILearner(UniqueModule):
         raise NotImplementedError
 
     def __init__(self, filename=None):
-        """
-        Learner initialization.
-        """
         super(ILearner, self).__init__()
+        self._logger = LoggingMgr().get_logger(self._mid)
 
         self._filename = filename
 
-    # noinspection PyMethodMayBeStatic
     def __getstate__(self):
-        return {}
+        data = super(ILearner, self).__getstate__()
+        del data['_logger']
+        return data
 
     def __setstate__(self, d):
         super(ILearner, self).__setstate__(d)
+        self._logger = LoggingMgr().get_logger(self._mid)
 
-    # noinspection PyUnusedLocal
-    def reset(self, t, **kwargs):
-        """Reset reinforcement learner.
+    def init(self):
+        """Initialize the learner."""
+        pass
 
-        Reset the learner before start of a new episode or iteration and
-        save the state of the learner to file.
+    def start(self):
+        """Start an episode."""
+        pass
 
-        Parameters
-        ----------
-        t : float
-            The current time (sec)
-        kwargs : dict, optional
-            Non-positional parameters, optional.
-
-        """
-        self.save(self._filename)
-
-    def execute(self, experience):
+    def step(self, experience):
         """Execute learning specific updates.
 
         Learning specific updates are performed, e.g. model updates.
@@ -216,8 +207,27 @@ class ILearner(UniqueModule):
         """
         raise NotImplementedError
 
+    def end(self, *args, **kwargs):
+        """End the episode.
+
+        Perform all end of episode tasks and save the state of the
+        learner to file.
+
+        Parameters
+        ----------
+        args : tuple
+            Positional arguments specific to the implementation of
+            the learner
+        kwargs : dict
+            Non-positional arguments specific to the implementation of
+            the learner
+
+        """
+        if self._filename is not None:
+            self.save(self._filename)
+
     @abstractmethod
-    def learn(self):
+    def learn(self, *args, **kwargs):
         """Learn a policy from the experience.
 
         Perform the learning step to derive a new policy taking the
@@ -225,9 +235,12 @@ class ILearner(UniqueModule):
 
         Parameters
         ----------
-        experience : Experience
-            The agent's experience consisting of the previous state, the action performed
-            in that state, the current state and the reward awarded.
+        args : tuple
+            Positional arguments specific to the implementation of
+            the learner
+        kwargs : dict
+            Non-positional arguments specific to the implementation of
+            the learner
 
         Raises
         ------
@@ -245,12 +258,12 @@ class ILearner(UniqueModule):
 
         Parameters
         ----------
-        state : State
+        state : MDPState
             The current state.
 
         Returns
         -------
-        Action :
+        MDPAction :
             The chosen action.
 
         Raises

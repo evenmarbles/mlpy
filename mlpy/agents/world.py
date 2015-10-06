@@ -55,15 +55,22 @@ class WorldObject(Module):
     def __init__(self):
         super(WorldObject, self).__init__()
 
-        self._current_time = 0.0
-        """:type: float"""
-
-        self._confidence_state = WorldObject.CONFIDENCE_INVALID
-        """:type: int"""
-
         self.location = Point3D()
         self.timestamp = -1.0
+
+        self._confidence_state = WorldObject.CONFIDENCE_INVALID
         self._confidence = 0.0
+
+    def __getstate__(self):
+        d = dict(self.__dict__)
+        for name in self.__slots__:
+            if not name == "confidence":
+                d[name] = getattr(self, name)
+        return d
+
+    def __setstate__(self, d):
+        for name, value in d.iteritems():
+            setattr(self, name, value)
 
     def enter(self, t):
         """Enter the world object.

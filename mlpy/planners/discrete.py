@@ -9,8 +9,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 from . import IPlanner
 from .explorers.discrete import DiscreteExplorer
-from ..tools.log import LoggingMgr
 from ..tools.misc import Waiting
+from ..tools.log import LoggingMgr
 
 
 class ValueIteration(IPlanner):
@@ -55,9 +55,9 @@ class ValueIteration(IPlanner):
     def model(self):
         """ The Markov decision process model.
 
-        The Markov decision process model contain information about
-        the states, actions, and their transitions and the reward
-        function.
+        The Markov decision process model containing information
+        about the states, actions, and their transitions and the
+        reward function.
 
         Returns
         -------
@@ -69,7 +69,6 @@ class ValueIteration(IPlanner):
 
     def __init__(self, model, explorer=None, gamma=None, ignore_unreachable=False):
         super(ValueIteration, self).__init__(explorer)
-        self._logger = LoggingMgr().get_logger(self._mid)
 
         self._plot_num = 0
 
@@ -87,24 +86,9 @@ class ValueIteration(IPlanner):
         self._gamma = 0.9 if gamma is None else gamma
         self._ignore_unreachable = ignore_unreachable if ignore_unreachable is not None else False
 
-    def __getstate__(self):
-        data = super(ValueIteration, self).__getstate__()
-        data.update({
-            '_model': self._model,
-            '_explorer': self._explorer,
-            '_gamma': self._gamma,
-            '_ignore_unreachable': self._ignore_unreachable,
-            '_plot_num': self._plot_num
-        })
-        return data
-
-    def __setstate__(self, d):
-        super(ValueIteration, self).__setstate__(d)
-
-        for name, value in d.iteritems():
-            setattr(self, name, value)
-
-        self._logger = LoggingMgr().get_logger(self._mid)
+    def init(self):
+        """Initialize value iteration planner."""
+        self._model.init()
 
     def activate_exploration(self):
         """Turn the explorer on."""
@@ -127,12 +111,12 @@ class ValueIteration(IPlanner):
 
         Parameters
         ----------
-        state : State
+        state : MDPState
             The state for which to choose the action for.
 
         Returns
         -------
-        Action :
+        MDPAction :
             The best action.
 
         """

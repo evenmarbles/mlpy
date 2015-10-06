@@ -11,28 +11,21 @@ Tests for `mlpy.learners` module.
 
 class TestOnlineLearners(object):
     def setup_method(self, _):
-        from mlpy.mdp.stateaction import Action
-        Action.set_description({
-            'out': {'value': [-0.004]},
-            'in': {'value': [0.004]},
-            'kick': {'value': [-1.0]}
-        })
+        pass
 
     def test_learner_creation(self):
         from mlpy.learners import LearnerFactory
 
         # create qlearner
         LearnerFactory.create('qlearner')
-        LearnerFactory.create('qlearner', max_steps=10)
+        LearnerFactory.create('qlearner', alpha=0.5)
 
-        # create rldtlearner
+        # create modelbasedlearner
         from mlpy.mdp.discrete import DiscreteModel
         from mlpy.planners.discrete import ValueIteration
         planner = ValueIteration(DiscreteModel())
 
-        LearnerFactory.create('rldtlearner', planner)
-        LearnerFactory.create('rldtlearner', planner, 10)
-        LearnerFactory.create('rldtlearner', planner, max_steps=10)
+        LearnerFactory.create('modelbasedlearner', planner)
 
     def teardown_method(self, _):
         pass

@@ -51,7 +51,7 @@ class Server(Supervisor):
             print(msg[1])
 
         try:
-            host = socket.gethostname()
+            host = '127.0.0.1'
             self._s.bind((host, port))
         except socket.error, msg:
             print(msg[1])

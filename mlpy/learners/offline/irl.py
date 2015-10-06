@@ -8,7 +8,7 @@ from datetime import datetime
 import numpy as np
 
 from ...tools.log import LoggingMgr
-from ...mdp.stateaction import State, RewardFunction
+from ...mdp.stateaction import MDPState, RewardFunction
 from . import IOfflineLearner
 
 __all__ = ['ApprenticeshipLearner', 'IncrApprenticeshipLearner']
@@ -99,6 +99,9 @@ class ApprenticeshipLearner(IOfflineLearner):
         conference on Machine learning. ACM, 2004.
 
     """
+    @property
+    def type(self):
+        return super(ApprenticeshipLearner, self).type
 
     def __init__(self, obs, planner, method=None, max_iter=None, thresh=None, gamma=None,
                  nsamples=None, max_steps=None, filename=None, **kwargs):
@@ -135,7 +138,7 @@ class ApprenticeshipLearner(IOfflineLearner):
             for i, o in enumerate(obs):
                 self._logger.debug("Demonstration #{0}:".format(i + 1))
                 for j, state in enumerate(o.T):
-                    self._logger.debug("    {0}: {1}".format(j + 1, State(state)))
+                    self._logger.debug("    {0}: {1}".format(j + 1, MDPState(state)))
 
         self._mu_E = self._estimate_expert_mu(obs)
         """:type : ndarray[float]"""
@@ -158,27 +161,19 @@ class ApprenticeshipLearner(IOfflineLearner):
 
     def __getstate__(self):
         data = super(ApprenticeshipLearner, self).__getstate__()
-        data.update(self.__dict__.copy())
-
-        remove_list = ('_id', '_logger', '_i')
-        for key in remove_list:
-            if key in data:
-                del data[key]
-
-        data['_iter'] = self._i
+        data['_iter'] = data.pop('_i')
         return data
 
     def __setstate__(self, d):
         super(ApprenticeshipLearner, self).__setstate__(d)
 
-        for name, value in d.iteritems():
-            setattr(self, name, value)
-
         # noinspection PyTypeChecker
         RewardFunction.cb_get = staticmethod(lambda r, s: np.dot(s, RewardFunction.reward))
         RewardFunction.reward = self._weights[self._iter - 1]
 
-        self._logger = LoggingMgr().get_logger(self._mid)
+    def init(self):
+        """Initialize the apprenticeship learner."""
+        self._planner.init()
 
     def learn(self):
         """Learn the optimal policy via apprenticeship learning.
@@ -311,7 +306,7 @@ class ApprenticeshipLearner(IOfflineLearner):
         """
         s0 = datetime.now()
 
-        mu = np.zeros(State.nfeatures, float)
+        mu = np.zeros(MDPState.nfeatures, float)
 
         self._planner.create_policy(self._find_closest if self._mix_policies else None)
 
@@ -325,7 +320,7 @@ class ApprenticeshipLearner(IOfflineLearner):
 
             for t in range(2, self._max_steps + 1):
                 # choose the next state according to the chosen policy
-                action = self._planner.get_next_action(state, use_policy=True)
+                action = self._planner.choose_action(state, use_policy=True)
 
                 next_state = self._planner.model.sample(state, action)
                 if next_state is None:
@@ -608,6 +603,9 @@ class IncrApprenticeshipLearner(ApprenticeshipLearner):
     :class:`ApprenticeshipLearner`
 
     """
+    @property
+    def type(self):
+        return super(IncrApprenticeshipLearner, self).type
 
     def __init__(self, obs, planner, method=None, max_iter=None, thresh=None, gamma=None,
                  nsamples=None, max_steps=None, filename=None, **kwargs):
@@ -615,30 +613,18 @@ class IncrApprenticeshipLearner(ApprenticeshipLearner):
                                                         max_steps, filename, **kwargs)
         self._step_iter = 0
 
-    def __getstate__(self):
-        return super(IncrApprenticeshipLearner, self).__getstate__()
-
     def __setstate__(self, d):
         super(IncrApprenticeshipLearner, self).__setstate__(d)
 
         self._i = self._iter
         self._step_iter = 0
 
-    def reset(self, t, **kwargs):
-        """Reset the apprenticeship learner.
-
-        Parameters
-        ----------
-        t : float
-            The current time (sec)
-        kwargs : dict, optional
-            Non-positional parameters, optional.
-
-        """
-        super(IncrApprenticeshipLearner, self).reset(t, **kwargs)
+    def start(self):
+        """End the episode."""
+        super(IncrApprenticeshipLearner, self).start()
         self._step_iter = 0
 
-    def execute(self, experience):
+    def step(self, experience):
         """Execute learning specific updates.
 
         Learning specific updates are performed, e.g. model updates.
@@ -683,12 +669,12 @@ class IncrApprenticeshipLearner(ApprenticeshipLearner):
 
         Parameters
         ----------
-        state : State
+        state : MDPState
             The current state.
 
         Returns
         -------
-        Action :
+        MDPAction :
             The chosen action.
 
         """
@@ -696,7 +682,7 @@ class IncrApprenticeshipLearner(ApprenticeshipLearner):
 
         if self._step_iter < self._max_steps:
             self._planner.activate_exploration()
-            action = self._planner.get_next_action(state)
+            action = self._planner.choose_action(state)
             self._step_iter += 1
 
         return action

@@ -51,6 +51,11 @@ class ICBRMethod(object):
     registered. Therefore, new specialty case base reasoning method classes can
     be defined and are recognized by the case base reasoning engine.
 
+    Parameters
+    ----------
+    owner : CaseBase
+        A pointer to the owning case base.
+
     Notes
     -----
     All case base reasoning method must inherit from this class.
@@ -58,8 +63,11 @@ class ICBRMethod(object):
     """
     __metaclass__ = RegistryInterface
 
+    def __init__(self, owner):
+        self._owner = owner
+
     @abstractmethod
-    def execute(self, case, case_matches, **kwargs):
+    def execute(self, case, case_matches):
         """Execute reuse step.
 
         Parameters
@@ -68,9 +76,6 @@ class ICBRMethod(object):
             The query case.
         case_matches : dict[int, CaseMatch]
             The solution identified through the similarity measure.
-        kwargs : dict, optional
-            Non-positional arguments passed to the class of the given type
-            for initialization.
 
         Raises
         ------
@@ -105,13 +110,18 @@ class IReuseMethod(ICBRMethod):
     the solution for the query case; new generalizations and specializations may occur
     as a consequence of the solution transformation.
 
+    Parameters
+    ----------
+    owner : CaseBase
+        A pointer to the owning case base.
+
     Notes
     -----
     All reuse method implementations must inherit from this class.
 
     """
     @abstractmethod
-    def execute(self, case, case_matches, fn_retrieve=None):
+    def execute(self, case, case_matches):
         """Execute reuse step.
 
         Parameters
@@ -120,8 +130,6 @@ class IReuseMethod(ICBRMethod):
             The query case.
         case_matches : dict[int, CaseMatch]
             The solution identified through the similarity measure.
-        fn_retrieve : callable
-            Callback for accessing the case base's 'retrieval' method.
 
         Returns
         -------
@@ -159,13 +167,18 @@ class IRevisionMethod(ICBRMethod):
     The solutions provided by the query case is evaluated and information about whether the solution
     has or has not provided a desired outcome is gathered.
 
+    Parameters
+    ----------
+    owner : CaseBase
+        A pointer to the owning case base.
+
     Notes
     -----
     All revision method implementations must inherit from this class.
 
     """
     @abstractmethod
-    def execute(self, case, case_matches, **kwargs):
+    def execute(self, case, case_matches):
         """Execute the revision step.
 
         Parameters
@@ -209,13 +222,18 @@ class IRetentionMethod(ICBRMethod):
     When the new problem-solving experience can be stored or not stored in memory, depending on
     the revision outcomes and the case base reasoning policy regarding case retention.
 
+    Parameters
+    ----------
+    owner : CaseBase
+        A pointer to the owning case base.
+
     Notes
     -----
     All retention method implementations must inherit from this class.
 
     """
     @abstractmethod
-    def execute(self, case, case_matches, fn_add=None):
+    def execute(self, case, case_matches):
         """Execute retention step.
 
         Parameters
@@ -224,8 +242,6 @@ class IRetentionMethod(ICBRMethod):
             The query case.
         case_matches : dict[int, CaseMatch]
             The solution identified through the similarity measure.
-        fn_add : callable
-            Callback for accessing the case base's 'add' method.
 
         Raises
         ------
@@ -257,16 +273,21 @@ class DefaultReuseMethod(IReuseMethod):
     the solution for the query case; new generalizations and specializations may occur
     as a consequence of the solution transformation.
 
+    Parameters
+    ----------
+    owner : CaseBase
+        A pointer to the owning case base.
+
     Notes
     -----
     The default reuse method does not perform any solution transformations.
 
     """
     # noinspection PyUnusedLocal
-    def __init__(self):
-        super(DefaultReuseMethod, self).__init__()
+    def __init__(self, owner):
+        super(DefaultReuseMethod, self).__init__(owner)
 
-    def execute(self, case, case_matches, fn_retrieve=None):
+    def execute(self, case, case_matches):
         """
         Execute reuse step.
 
@@ -276,8 +297,6 @@ class DefaultReuseMethod(IReuseMethod):
             The query case.
         case_matches : dict[int, CaseMatch]
             The solution identified through the similarity measure.
-        fn_retrieve : callable
-            Callback for accessing the case base's 'retrieval' method.
 
         Returns
         -------
@@ -295,16 +314,21 @@ class DefaultRevisionMethod(IRevisionMethod):
     The solutions provided by the query case is evaluated and information about whether the solution
     has or has not provided a desired outcome is gathered.
 
+    Parameters
+    ----------
+    owner : CaseBase
+        A pointer to the owning case base.
+
     Notes
     -----
     The default revision method returns the original solution without making any modifications.
     """
 
     # noinspection PyUnusedLocal
-    def __init__(self):
-        super(DefaultRevisionMethod, self).__init__()
+    def __init__(self, owner):
+        super(DefaultRevisionMethod, self).__init__(owner)
 
-    def execute(self, case, case_matches, **kwargs):
+    def execute(self, case, case_matches):
         """Execute the revision step.
 
         Parameters
@@ -332,6 +356,8 @@ class DefaultRetentionMethod(IRetentionMethod):
 
     Parameters
     ----------
+    owner : CaseBase
+        A pointer to the owning case base.
     max_error : float
         The maximum permitted error.
 
@@ -344,12 +370,12 @@ class DefaultRetentionMethod(IRetentionMethod):
         d(\\text{case}, \\text{solution}[0]) < \\text{max\_error}.
 
     """
-    def __init__(self, max_error=None):
-        super(DefaultRetentionMethod, self).__init__()
+    def __init__(self, owner, max_error=None):
+        super(DefaultRetentionMethod, self).__init__(owner)
 
         self._max_error = max_error if max_error is not None else 1e-06
 
-    def execute(self, case, case_matches, fn_add=None):
+    def execute(self, case, case_matches):
         """Execute retention step.
 
         Parameters
@@ -358,12 +384,10 @@ class DefaultRetentionMethod(IRetentionMethod):
             The query case.
         case_matches : dict[int, CaseMatch]
             The solution identified through the similarity measure.
-        fn_add : callable
-            Callback for accessing the case base's 'add' method.
 
         """
         # noinspection PyUnresolvedReferences
         key = case.get_indexed()
         if not case_matches or case_matches[
            min(case_matches, key=lambda x: case_matches[x].get_similarity(key))].get_similarity(key) < self._max_error:
-            fn_add(case)
+            self._owner.add(case)

@@ -120,6 +120,19 @@ class Point2D(object):
         self.x = x
         self.y = y
 
+    def __getstate__(self):
+        data = {}
+        for name in self.__slots__:
+            data[name] = getattr(self, name)
+        return data
+
+    def __setstate__(self, d):
+        for name, value in d.iteritems():
+            setattr(self, name, value)
+
+    def __repr__(self):
+        return "(%.2f, %.2f)" % (self.x, self.y)
+
 
 class Point3D(object):
     """
@@ -153,6 +166,19 @@ class Point3D(object):
         self.x = x
         self.y = y
         self.z = z
+
+    def __getstate__(self):
+        data = {}
+        for name in self.__slots__:
+            data[name] = getattr(self, name)
+        return data
+
+    def __setstate__(self, d):
+        for name, value in d.iteritems():
+            setattr(self, name, value)
+
+    def __repr__(self):
+        return "(%.2f, %.2f, %.2f)" % (self.x, self.y, self.z)
 
 
 class Vector3D(Point3D):

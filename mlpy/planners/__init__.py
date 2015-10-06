@@ -34,30 +34,18 @@ from __future__ import division, print_function, absolute_import
 
 from abc import ABCMeta, abstractmethod
 from ..modules import UniqueModule
-from ..mdp.stateaction import Action
+from ..mdp.stateaction import MDPAction
+from ..tools.log import LoggingMgr
 
-__all__ = ['explorers', 'discrete']
 
-
+# noinspection PyMethodMayBeStatic
 class IPlanner(UniqueModule):
     """The planner interface class.
 
     Parameters
     ----------
     explorer : Explorer
-        The exploration strategy to employ. Available explorers are:
-
-        :class:`.EGreedyExplorer`
-            With :math:`\\epsilon` probability, a random action is
-            chosen, otherwise the action resulting in the highest
-            q-value is selected.
-
-        :class:`.SoftmaxExplorer`
-            The softmax explorer varies the action probability as a
-            graded function of estimated value. The greedy action is
-            still given the highest selection probability, but all the others
-            are ranked and weighted according to their value estimates.
-
+        The exploration strategy to employ.
     """
     __metaclass__ = ABCMeta
 
@@ -66,22 +54,27 @@ class IPlanner(UniqueModule):
         Initialization of the planner class.
         """
         super(IPlanner, self).__init__()
+        self._logger = LoggingMgr().get_logger(self._mid)
 
         self._history = {}
-        """:type : dict[State,list[str]]"""
+        """:type : dict[MDPState,list[str]]"""
         self._current = -1
 
         self._explorer = explorer
         """:type: Explorer"""
 
     def __getstate__(self):
-        return {'_history': self._history}
+        data = super(IPlanner, self).__getstate__()
+        del data['_logger']
+        return data
 
     def __setstate__(self, d):
         super(IPlanner, self).__setstate__(d)
+        self._logger = LoggingMgr().get_logger(self._mid)
 
-        setattr(self, '_history', d['_history'])
-        self._current = len(self._history[next(iter(self._history))]) - 1 if len(self._history) > 0 else -1
+    def init(self):
+        """Initialize the planner."""
+        pass
 
     def activate_exploration(self):
         """Turn the explorer on. """
@@ -99,12 +92,12 @@ class IPlanner(UniqueModule):
 
         Parameters
         ----------
-        state : State
+        state : MDPState
             The state for which to choose the action for.
 
         Returns
         -------
-        Action :
+        MDPAction :
             The best action.
 
         Raises
@@ -127,12 +120,12 @@ class IPlanner(UniqueModule):
         """
         raise NotImplementedError
 
-    def get_next_action(self, state, use_policy=False):
-        """ Returns the optimal action for a state according to the current policy.
+    def choose_action(self, state, use_policy=False):
+        """ Choose the optimal action for a state according to the current policy.
 
         Parameters
         ----------
-        state : State
+        state : MDPState
             The state for which to choose the next action for.
         use_policy : bool, optional
             When using a policy the next action is chosen according to the
@@ -141,7 +134,7 @@ class IPlanner(UniqueModule):
 
         Returns
         -------
-        Action :
+        MDPAction :
             The next action.
 
         """
@@ -170,7 +163,7 @@ class IPlanner(UniqueModule):
         # noinspection PyUnresolvedReferences
         n = len(self._history.itervalues().next()) if self._history else 0
         self._history = dict((s, (self._history.get(s, []) if self._history.get(s) is not None else [
-                              Action.get_noop_action()] * n) + policy.get(s, [])) for s in states)
+                              MDPAction.get_noop_action()] * n) + policy.get(s, [])) for s in states)
         self._current += 1
 
     def visualize(self):
@@ -186,3 +179,5 @@ class IPlanner(UniqueModule):
 
     def _create_policy(self, func=None):
         raise NotImplementedError
+
+__all__ = ['explorers', 'discrete']

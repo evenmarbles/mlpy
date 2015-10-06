@@ -1,119 +1,19 @@
 from __future__ import division, print_function, absolute_import
 
-import os
+import numpy as np
+from scipy.stats import bernoulli
 
-from ...tools.log import LoggingMgr
 from ...planners.explorers.discrete import DiscreteExplorer
+from ...planners.explorers.discrete import IExplorer
 from ...mdp.discrete import DiscreteModel
+from ...mdp.stateaction import MDPState, MDPAction
+from ...stats.models.ann.neuralnet import NeuralNetwork
 from . import IOnlineLearner
 
-__all__ = ['RLLearner', 'QLearner', 'RLDTLearner']
+__all__ = ['QLearner', 'ModelBasedLearner']
 
 
-# noinspection PyAbstractClass
-class RLLearner(IOnlineLearner):
-    """The reinforcement learning learner interface.
-
-    Parameters
-    ----------
-    max_steps : int, optional
-        The maximum number of steps in an iteration. Default is 100.
-    filename : str, optional
-        The name of the file to save the learner state to after each iteration.
-        If None is given, the learner state is not saved. Default is None.
-    profile : bool, optional
-        Turn on profiling at which point profiling data is collected
-        and saved to a text file. Default is False.
-
-    """
-    def __init__(self, max_steps=None, filename=None, profile=False):
-        super(RLLearner, self).__init__(filename)
-        self._logger = LoggingMgr().get_logger(self._mid)
-
-        self._step_iter = 0
-
-        self._episode_cntr = 1
-        self._cum_reward = 0
-        self._num_wins = 0
-
-        self._max_steps = max_steps if max_steps is not None else 100
-        self._profile = profile
-
-    def __getstate__(self):
-        data = super(RLLearner, self).__getstate__()
-        data.update(self.__dict__.copy())
-
-        remove_list = ('_id', '_logger')
-        for key in remove_list:
-            if key in data:
-                del data[key]
-
-        return data
-
-    def __setstate__(self, d):
-        super(RLLearner, self).__setstate__(d)
-
-        for name, value in d.iteritems():
-            setattr(self, name, value)
-
-        self._logger = LoggingMgr().get_logger(self._mid)
-        self._logger.debug("Episode=%d", self._episode_cntr)
-
-    def reset(self, t, **kwargs):
-        """Reset reinforcement learner.
-
-        Parameters
-        ----------
-        t : float
-            The current time (sec)
-        kwargs : dict, optional
-            Non-positional parameters, optional.
-
-        """
-        super(RLLearner, self).reset(t, **kwargs)
-
-        self._step_iter = 0
-
-    def save(self, filename):
-        """Save the learners state.
-
-        If profiling is turned on, profile information is saved to a `txt` file
-        with the same name.
-
-        Parameters
-        ----------
-        filename : str
-            The filename to save the information to.
-
-        """
-        super(RLLearner, self).save(filename)
-
-        if self._profile:
-            filename = os.path.splitext(self._filename)[0]
-            with open(filename + ".txt", "a") as f:
-                win_ratio = float(self._num_wins) / float(self._episode_cntr)
-                f.write("%d, %d, %.2f, %.2f\n" % (self._episode_cntr, self._num_wins, self._cum_reward, win_ratio))
-
-    def learn(self, experience=None):
-        """Learn a policy from the experience.
-
-        Parameters
-        ----------
-        experience : Experience
-            The agent's experience consisting of the previous state, the action performed
-            in that state, the current state and the reward awarded.
-
-        """
-        self._logger.info(experience)
-
-        if self._profile and experience.reward is not None:
-            if experience.reward > 0.0:
-                self._num_wins += 1
-            self._cum_reward += experience.reward
-            self._logger.debug("cumReward: %.2f", self._cum_reward)
-
-
-class QLearner(RLLearner):
+class QLearner(IOnlineLearner):
     """Performs q-learning.
 
     Q-learning is a reinforcement learning variant.
@@ -122,8 +22,6 @@ class QLearner(RLLearner):
     ----------
     explorer : Explorer, optional
         The exploration strategy used. Default is no exploration.
-    max_steps : int, optional
-        The maximum number of steps in an iteration. Default is 100
     alpha : float, optional
         The learning rate. Default is 0.5.
     gamma : float, optional
@@ -131,22 +29,29 @@ class QLearner(RLLearner):
     filename : str, optional
         The name of the file to save the learner state to after each iteration.
         If None is given, the learner state is not saved. Default is None.
-    profile : bool, optional
-        Turn on profiling at which point profiling data is collected
-        and saved to a text file. Default is False.
 
     """
-    def __init__(self, explorer=None, max_steps=None, alpha=None, gamma=None, filename=None, profile=False):
-        super(QLearner, self).__init__(max_steps, filename, profile)
+    @property
+    def type(self):
+        return super(QLearner, self).type
+
+    def __init__(self, explorer=None, alpha=None, gamma=None, filename=None):
+        super(QLearner, self).__init__(filename)
 
         self._model = DiscreteModel()
         self._explorer = explorer if explorer is not None else DiscreteExplorer()
         """:type: Explorer"""
+        if not isinstance(self._explorer, IExplorer):
+            raise TypeError("'explorer' must be of type 'IExplorer'")
 
         self._alpha = alpha if alpha is not None else 0.5
         self._gamma = gamma if gamma is not None else 0.9
 
-    def execute(self, experience):
+    def init(self):
+        """Initialize the learner."""
+        self._model.init()
+
+    def step(self, experience):
         """Execute learning specific updates.
 
         Learning specific updates are performed, e.g. model updates.
@@ -160,7 +65,7 @@ class QLearner(RLLearner):
         """
         self._model.update(experience)
 
-    def learn(self, experience=None):
+    def learn(self, experience):
         """ Learn a policy from the experience.
 
         By updating the Q table according to the experience a policy is learned.
@@ -172,8 +77,6 @@ class QLearner(RLLearner):
             performed in that state, the current state, and the reward awarded.
 
         """
-        super(QLearner, self).learn(experience)
-
         info = self._model.statespace[experience.state]
         info2 = self._model.statespace[experience.next_state]
 
@@ -196,34 +99,29 @@ class QLearner(RLLearner):
 
         Parameters
         ----------
-        state : State
+        state : MDPState
             The current state.
 
         Returns
         -------
-        Action :
+        MDPAction :
             The chosen action.
 
         """
         self._model.add_state(state)
 
-        action = None
-        if self._step_iter < self._max_steps:
-            actions = self._model.get_actions(state)
-            info = self._model.statespace[state]
+        actions = self._model.get_actions(state)
+        info = self._model.statespace[state]
 
-            action = self._explorer.choose_action(actions, [info.q[a] for a in actions])
-            self._logger.debug("state=%s act=%s value=%.2f", state, action, self._model.statespace[state].q[action])
-
-        return action
+        action = self._explorer.choose_action(actions, [info.q[a] for a in actions])
+        self._logger.debug("state=%s act=%s value=%.2f", state, action, self._model.statespace[state].q[action])
 
 
-class RLDTLearner(RLLearner):
-    """Performs reinforcement learning using decision trees.
+class ModelBasedLearner(IOnlineLearner):
+    """Performs model based reinforcement learning.
 
-    Reinforcement learning using decision trees (RL-DT) use decision trees
-    to build the transition and reward models as described by Todd Hester and
-    Peter Stone [1]_.
+    Model based reinforcement learning uses the model and planner provided
+    to make decisions on which action to perform next.
 
     Parameters
     ----------
@@ -238,34 +136,26 @@ class RLDTLearner(RLLearner):
         Turn on profiling at which point profiling data is collected
         and saved to a text file. Default is False.
 
-    References
-    ----------
-    .. [1] Hester, Todd, and Peter Stone. "Generalized model learning for reinforcement
-        learning in factored domains." Proceedings of The 8th International Conference on
-        Autonomous Agents and Multiagent Systems-Volume 2. International Foundation for Autonomous
-        Agents and Multiagent Systems, 2009.
-
     """
-    def __init__(self, planner, max_steps=None, filename=None, profile=False):
-        super(RLDTLearner, self).__init__(max_steps, filename, profile)
+    @property
+    def type(self):
+        return super(ModelBasedLearner, self).type
+
+    def __init__(self, planner, filename=None):
+        super(ModelBasedLearner, self).__init__(filename)
 
         self._do_plan = True
         self._planner = planner
 
-    def __getstate__(self):
-        data = super(RLDTLearner, self).__getstate__()
-        data.update({'_planner': self._planner})
-        return data
-
     def __setstate__(self, d):
-        super(RLDTLearner, self).__setstate__(d)
-
-        for name, value in d.iteritems():
-            setattr(self, name, value)
-
+        super(ModelBasedLearner, self).__setstate__(d)
         self._do_plan = False
 
-    def execute(self, experience):
+    def init(self):
+        """Initialize the learner."""
+        self._planner.init()
+
+    def step(self, experience):
         """Execute learning specific updates.
 
         Learning specific updates are performed, e.g. model updates.
@@ -279,7 +169,7 @@ class RLDTLearner(RLLearner):
         """
         self._do_plan = self._planner.model.update(experience)
 
-    def learn(self, experience=None):
+    def learn(self, experience):
         """Learn a policy from the experience.
 
         A policy is learned from the experience by building the MDP model.
@@ -291,8 +181,6 @@ class RLDTLearner(RLLearner):
             performed in that state, the current state, and the reward awarded.
 
         """
-        super(RLDTLearner, self).learn(experience)
-
         if self._do_plan:
             self._planner.plan()
 
@@ -304,19 +192,189 @@ class RLDTLearner(RLLearner):
 
         Parameters
         ----------
-        state : State
+        state : MDPState
             The current state.
 
         Returns
         -------
-        Action :
+        MDPAction :
             The chosen action.
 
         """
-        action = None
+        return self._planner.choose_action(state)
 
-        if self._step_iter < self._max_steps:
-            action = self._planner.get_next_action(state)
-            self._step_iter += 1
 
-        return action
+class Cacla(IOnlineLearner):
+    @property
+    def type(self):
+        return super(Cacla, self).type
+
+    def __init__(self, nhidden_q, nhidden_v, explorer_type=None, gamma=None, alpha=None, beta=None, explore_rate=None,
+                 filename=None):
+        super(Cacla, self).__init__(filename)
+
+        self._g1 = 0.
+        self._g2 = 0.
+        self._stored_gauss = False
+
+        self._action = None
+        self._value = None
+
+        self._v_target = None
+
+        self._nhidden_q = nhidden_q
+        self._nhidden_v = nhidden_v
+
+        self._gamma = gamma if gamma is not None else .99
+        self._alpha = alpha if alpha is not None else .01
+        self._beta = beta if beta is not None else .01
+
+        self._explorer_type = explorer_type if explorer_type is not None else "gaussian"
+        self._explore_rate = explore_rate if explore_rate is not None else 5000
+
+    def init(self):
+        """Initialize the learner."""
+        if MDPState.discretized:
+            num_states = 1
+            for states_per_dim in zip(MDPState.states_per_dim):
+                num_states *= states_per_dim
+
+            self._action = np.zeros((num_states, MDPAction.nfeatures))
+            self._value = np.zeros((num_states,))
+        else:
+            self._action = NeuralNetwork([MDPState.nfeatures, self._nhidden_q, MDPAction.nfeatures])
+            self._value = NeuralNetwork([MDPState.nfeatures, self._nhidden_v, 1])
+
+            self._v_target = np.zeros((1,))
+
+        self._stored_gauss = False
+
+    def step(self, experience):
+        """Execute learning specific updates.
+
+        Learning specific updates are performed, e.g. model updates.
+
+        Parameters
+        ----------
+        experience : Experience
+            The actor's current experience consisting of previous state, the action
+            performed in that state, the current state, and the reward awarded.
+
+        """
+        if not MDPState.discretized:
+            self._action.feed_forward(experience.next_state)
+
+    def end(self, experience):
+        """End the episode.
+
+        Perform all end of episode tasks and save the state of the
+        learner to file.
+
+        Parameters
+        ----------
+        experience : Experience
+            The agent's experience consisting of the previous state, the action performed
+            in that state, the current state and the reward awarded.
+
+        """
+        if MDPState.discretized:
+            vt = self._value[experience.state][0]
+
+            self._value[experience.state] += self._alpha * (experience.reward - self._value[experience.state])
+
+            if self._value[experience.state] > vt:
+                self._action[experience.state] += self._beta * (
+                    experience.action - self._action[experience.state])
+        else:
+            self._v_target[0] = experience.reward
+            vt = self._value.feed_forward(experience.state)[0]
+            self._value.back_propagate(experience.state, self._v_target, self._alpha)
+
+            if self._v_target[0] > vt:
+                self._action.back_propagate(experience.state, experience.action, self._beta)
+
+    def learn(self, experience):
+        """Learn a policy from the experience.
+
+        Perform the learning step to derive a new policy taking the
+        latest experience into account.
+
+        Parameters
+        ----------
+        experience : Experience
+            The agent's experience consisting of the previous state, the action performed
+            in that state, the current state and the reward awarded.
+
+        """
+        if MDPState.discretized:
+            vt = self._value[experience.state][0]
+
+            self._value[experience.state] += self._alpha * (
+                experience.reward + self._gamma * self._value[experience.next_state] - self._value[experience.state])
+
+            if self._value[experience.state] > vt:
+                self._action[experience.state] += self._beta * (
+                    experience.action - self._action[experience.state])
+        else:
+            vs = self._value.feed_forward(experience.next_state)[0]
+            self._v_target[0] = experience.reward + self._gamma * vs
+
+            vt = self._value.feed_forward(experience.state)[0]
+            self._value.back_propagate(experience.state, self._v_target, self._alpha)
+
+            if self._v_target[0] > vt:
+                self._action.back_propagate(experience.state, experience.action, self._beta)
+
+    def choose_action(self, state):
+        """Choose the next action
+
+        The next action is chosen according to the current policy and the
+        selected exploration strategy.
+
+        Parameters
+        ----------
+        state : MDPState
+            The current state.
+
+        Returns
+        -------
+        MDPAction :
+            The chosen action.
+
+        """
+        if MDPState.discretized:
+            action = self._action[state]
+        else:
+            action = self._action.get_activations(-1)
+
+        if self._explorer_type == "egreedy":
+            if bernoulli.rvs(self._explore_rate):
+                for i, (min_, max_) in enumerate(zip(MDPAction.min_features, MDPAction.max_features)):
+                    action[i] = np.random.uniform(min_, max_)
+        if self._explorer_type == "gaussian":
+            for i in range(MDPAction.nfeatures):
+                action[i] += self._explore_rate * self._gaussian_random()
+
+        return MDPAction(action)
+
+    def _gaussian_random(self):
+        if self._stored_gauss:
+            self._stored_gauss = False
+            return self._g2
+
+        x = y = 0.
+        z = 1.
+        while z >= 1.0:
+            # x = np.random.uniform(-1., 1.)
+            # y = np.random.uniform(-1., 1.)
+            x = 2.0 * np.random.random() - 1.0
+            y = 2.0 * np.random.random() - 1.0
+            z = x * x + y * y
+
+        z = np.sqrt(-2. * np.log(z) / z)
+
+        self._g1 = x * z
+        self._g2 = y * z
+
+        self._stored_gauss = True
+        return self._g1

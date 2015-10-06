@@ -110,6 +110,9 @@ class Case(object):
     def __getitem__(self, key):
         return self._features[key].value
 
+    def __setitem__(self, key, value):
+        self._features[key].value = value
+
     def __len__(self):
         return len(self._features)
 
@@ -493,15 +496,15 @@ class CaseBase(object):
 
     Fill case base with data read from file:
 
-    >>> from mlpy.mdp.stateaction import Experience, State, Action
+    >>> from mlpy.mdp.stateaction import Experience, MDPState, MDPAction
     >>>
     >>> data = load_from_file("data/jointsAndActionsData.pkl")
     >>> for i in xrange(len(data.itervalues().next())):
     ...     for j in xrange(len(data.itervalues().next()[0][i]) - 1):
     ...         if not j == 10:  # exclude one experience as test case
-    ...             experience = Experience(State(data["states"][i][:, j]),
-    ...                                     Action(data["actions"][i][:, j]),
-    ...                                     State(data["states"][i][:, j + 1]))
+    ...             experience = Experience(MDPState(data["states"][i][:, j]),
+    ...                                     MDPAction(data["actions"][i][:, j]),
+    ...                                     MDPState(data["states"][i][:, j + 1]))
     ...             cb.run(cb.case_from_data(experience))
 
 
@@ -529,6 +532,17 @@ class CaseBase(object):
         """
         return self._counter
 
+    @property
+    def cases(self):
+        """The unadulterated cases.
+
+        Returns
+        -------
+        dict :
+            The cases in the case base.
+        """
+        return self._cases
+
     def __init__(self, case_template, reuse_method=None, reuse_method_params=None, revision_method=None,
                  revision_method_params=None, retention_method=None, retention_method_params=None,
                  plot_retrieval=None, plot_retrieval_names=None):
@@ -547,38 +561,36 @@ class CaseBase(object):
         self._case_template = case_template
         """:type: dict"""
 
-        reuse_method = reuse_method if reuse_method is not None else 'defaultreusemethod'
-        reuse_method_params = reuse_method_params if reuse_method_params is not None else {}
         try:
-            self._reuse_method = CBRMethodFactory.create(reuse_method, **reuse_method_params)
-            """:type: IReuseMethod"""
+            reuse_method_params = reuse_method_params if reuse_method_params is not None else {}
+            self._reuse_method = CBRMethodFactory.create(reuse_method, self, **reuse_method_params)
         except:
-            raise ValueError("%s is not a valid reuse method" % reuse_method)
+            self._reuse_method = None
+        """:type: IReuseMethod"""
 
-        revision_method = revision_method if revision_method is not None else 'defaultrevisionmethod'
-        revision_method_params = revision_method_params if revision_method_params is not None else {}
         try:
-            self._revision_method = CBRMethodFactory.create(revision_method, **revision_method_params)
-            """:type: IRevisionMethod"""
+            revision_method_params = revision_method_params if revision_method_params is not None else {}
+            self._revision_method = CBRMethodFactory.create(revision_method, self, **revision_method_params)
         except:
-            raise ValueError("%s is not a valid revision method" % revision_method)
+            self._revision_method = None
+        """:type: IRevisionMethod"""
 
-        retention_method = retention_method if retention_method is not None else 'defaultretentionmethod'
-        retention_method_params = retention_method_params if retention_method_params is not None else {}
         try:
-            self._retention_method = CBRMethodFactory.create(retention_method, **retention_method_params)
+            retention_method = retention_method if retention_method is not None else 'defaultretentionmethod'
+            retention_method_params = retention_method_params if retention_method_params is not None else {}
+            self._retention_method = CBRMethodFactory.create(retention_method, self, **retention_method_params)
             """:type: IRetentionMethod"""
         except:
             raise ValueError("%s is not a valid retention method" % retention_method)
 
         self._plot_retrieval = plot_retrieval if plot_retrieval is not None else False
         """:type: bool"""
+        if self._plot_retrieval:
+            self._plot_retrieval_names = plot_retrieval_names if plot_retrieval_names is not None else None
+            """:type: str | list[str]"""
 
-        self._plot_retrieval_names = plot_retrieval_names if plot_retrieval_names is not None else None
-        """:type: str | list[str]"""
-
-        self._fig = None
-        self._ax = None
+            self._fig = None
+            self._ax = None
 
     def __getitem__(self, key):
         return self._cases[key]
@@ -735,7 +747,7 @@ class CaseBase(object):
         if not case_matches:
             return {}
 
-        return self._reuse_method.execute(case, case_matches, self.retrieve)
+        return self._reuse_method.execute(case, case_matches) if self._reuse_method is not None else case_matches
 
     def revision(self, case, case_matches):
         """Evaluate solution provided by problem-solving experience.
@@ -756,7 +768,7 @@ class CaseBase(object):
         if not case_matches:
             return {}
 
-        return self._revision_method.execute(case, case_matches)
+        return self._revision_method.execute(case, case_matches) if self._revision_method is not None else case_matches
 
     def retain(self, case, case_matches):
         """Retain new case.
@@ -772,7 +784,7 @@ class CaseBase(object):
             The corrected solution
 
         """
-        self._retention_method.execute(case, case_matches, self.add)
+        self._retention_method.execute(case, case_matches)
 
     def plot_retrieval(self, case, case_id_list, names=None):
         """Plot the retrieved data.

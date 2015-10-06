@@ -5,6 +5,7 @@ import math
 import numpy as np
 
 from .distrib import ProbabilityDistribution
+from ..stats import random_floats
 
 
 class Experience(object):
@@ -14,11 +15,11 @@ class Experience(object):
 
     Parameters
     ----------
-    state : State
+    state : MDPState
         The representation of the current state.
-    action : Action
+    action : MDPAction
         The executed action.
-    next_state : State
+    next_state : MDPState
         The representation of the state following from acting
         with `action` in state `state`.
     reward : int or float
@@ -27,11 +28,11 @@ class Experience(object):
 
     Attributes
     ----------
-    state : State
+    state : MDPState
         The experienced state
-    action : Action
+    action : MDPAction
         The experienced action.
-    next_state : State
+    next_state : MDPState
         The experienced next state.
     reward : float
         The experienced reward.
@@ -46,6 +47,12 @@ class Experience(object):
         self.reward = reward
 
     def __str__(self):
+        s = "state={0} act={1} reward={2:.2f} next_state={3}".format(self.state, self.action, self.reward,
+                                                                     self.next_state) if self.reward else \
+            "state={0} act={1} next_state={2}".format(self.state, self.action, self.next_state)
+        return s
+
+    def __repr__(self):
         s = "state={0} act={1} next_state={2}".format(self.state, self.action, self.next_state) if self.reward else \
             "state={0} act={1} reward={2:.2f} next_state={3}".format(
                 self.state, self.action, self.reward, self.next_state)
@@ -99,8 +106,6 @@ class RewardFunction(object):
     callback function.
 
     """
-    __slots__ = ('_bonus', 'activate_bonus', 'reward', 'rmax', 'cb_get', 'cb_set',)
-
     cb_get = None
     cb_set = None
 
@@ -158,9 +163,9 @@ class RewardFunction(object):
 
         """
         if self.cb_set is not None:
-            type(self).reward = self.cb_set(*args, **kwargs)
+            self.reward = self.cb_set(*args, **kwargs)
             return
-        type(self).reward = value
+        self.reward = value
 
     def get(self, *args, **kwargs):
         """Retrieve the reward value.
@@ -190,7 +195,7 @@ class RewardFunction(object):
         return reward
 
 
-class StateActionInfo(object):
+class MDPStateActionInfo(object):
     """The models interface.
 
     Contains all relevant information predicted by a model for a
@@ -229,7 +234,7 @@ class StateActionInfo(object):
             setattr(self, name, value)
 
 
-class StateData(object):
+class MDPStateData(object):
     """State information interface.
 
     Information about the state can be accessed here.
@@ -238,7 +243,7 @@ class StateData(object):
     ----------
     state_id : int
         The unique id of the state
-    actions : list[Action]
+    actions : list[MDPAction]
         List of actions that can be taken in this state.
 
     Attributes
@@ -253,17 +258,19 @@ class StateData(object):
         The number of steps the state is away from its closest neighbor.
 
     """
-    __slots__ = ('id', 'models', 'q', 'steps_away')
+    __slots__ = ('id', 'models', 'q', 'v', 'steps_away')
 
     def __init__(self, state_id, actions):
         self.id = state_id
         """:type: int"""
-        self.models = {a: StateActionInfo() for a in actions}
-        """:type: dict[Action, StateActionInfo]"""
+        self.models = {a: MDPStateActionInfo() for a in actions}
+        """:type: dict[MDPAction, MDPStateActionInfo]"""
         # Randomizing the initial q-values impedes performance
         # self.q = {a: ((0.01 - 0.0) * np.random.random() + 0.0) for a in actions}
         self.q = {a: 0.0 for a in actions}
-        """:type: dict[Action, float]"""
+        """:type: dict[MDPAction, float]"""
+        self.v = 0.0
+        """:type: float"""
         self.steps_away = 100000
         """:type: int"""
 
@@ -281,7 +288,7 @@ class StateData(object):
 class MDPPrimitive(object):
     """A Markov decision process primitive.
 
-    The base class for :class:`State` and :class:`Action`. Primitives
+    The base class for :class:`MDPState` and :class:`MDPAction`. Primitives
     are represented by a list of features. They optionally can have a `name`.
 
     Parameters
@@ -593,7 +600,7 @@ class MDPPrimitive(object):
         cls.discretized = val
 
     @classmethod
-    def set_minmax_features(cls, _min, _max):
+    def set_minmax_features(cls, minmax, *args):
         """Sets the minimum and maximum value for each feature.
 
         This extracts the number of features from the `_min` and `_max`
@@ -602,10 +609,10 @@ class MDPPrimitive(object):
 
         Parameters
         ----------
-        _min : array_like, shape(`nfeatures`,)
-            The minimum value for each feature
-        _max : array_like, shape(`nfeatures`,)
-            The maximum value for each feature
+        minmax : array_like, shape(2,)
+            The minimum and maximum value for the first feature
+        args : tuple
+            Min-max arrays for additional features
 
         Raises
         ------
@@ -615,28 +622,30 @@ class MDPPrimitive(object):
             the attribute `nfeatures`.
 
         """
-        _min = np.asarray(_min, dtype=cls.dtype)
-        _max = np.asarray(_max, dtype=cls.dtype)
-
-        dim = _min.size
+        minmax = np.asarray(minmax, dtype=cls.dtype)
+        dim = minmax.size
         if dim == 1:
-            _min.shape = (1,)
+            minmax.shape = (1,)
 
-        dim = _max.size
-        if dim == 1:
-            _max.shape = (1,)
+        if minmax.shape[0] != 2:
+            raise ValueError("Each array must identifying min and max value for the feature")
 
-        if _min.shape[0] != _max.shape[0]:
-            raise ValueError("Dimension mismatch: array '_min' is a vector of length %d,"
-                             " but '_max' is of length %d" % (_min.shape[0], _max.shape[0]))
+        if args is not None:
+            args = list(args)
+            args.insert(0, minmax)
+
+        _minmax = []
+        for val in zip(*args):
+            _minmax.append(np.asarray(val, dtype=cls.dtype))
+
         if cls.nfeatures is None:
-            cls.nfeatures = _min.shape[0]
+            cls.nfeatures = _minmax[0].shape[0]
 
-        if _min.shape[0] != cls.nfeatures:
-            raise ValueError("Arrays '_min' and '_max' must be of length %d." % cls.nfeatures)
+        if _minmax[0].shape[0] != cls.nfeatures or _minmax[1].shape[0] != cls.nfeatures:
+            raise ValueError("No more than %d minmax arrays can be given." % cls.nfeatures)
 
-        cls.min_features = _min
-        cls.max_features = _max
+        cls.min_features = _minmax[0]
+        cls.max_features = _minmax[1]
 
     @classmethod
     def set_states_per_dim(cls, nstates):
@@ -670,12 +679,13 @@ class MDPPrimitive(object):
             raise ValueError("Array 'nstates' must be a vector of length %d." % cls.nfeatures)
 
         cls.states_per_dim = nstates
+        cls.discretized = True
 
     def __init__(self, features, name=None):
         if type(self).dtype is None:
             type(self).dtype = MDPPrimitive.DTYPE_FLOAT
 
-        self._features = np.asarray(features)
+        self._features = np.asarray(features, dtype=self.dtype)
         if self._features.ndim != 1:
             raise ValueError("Array 'features' must be one-dimensional,"
                              " but features.ndim = %d" % self._features.ndim)
@@ -690,7 +700,7 @@ class MDPPrimitive(object):
             raise ValueError("Dimension mismatch: array 'features' is a vector of length %d, but"
                              " attribute cls.nfeatures = %d" % (self._features.shape[0], type(self).nfeatures))
 
-        if type(self).discretized and type(self).states_per_dim:
+        if type(self).discretized and type(self).states_per_dim is not None:
             self.discretize()
 
     # noinspection PyUnusedLocal
@@ -725,6 +735,9 @@ class MDPPrimitive(object):
 
     def __mul__(self, other):
         return self._features * other
+
+    def __rmul__(self, other):
+        return other * self._features
 
     def __imul__(self, other):
         self._features *= other
@@ -836,8 +849,7 @@ class MDPPrimitive(object):
 
         ds = []
         for i, feat in enumerate(self):
-            factor = math.ceil(
-                (max_features[i] - min_features[i]) / states_per_dim[i])
+            factor = (max_features[i] - min_features[i]) / states_per_dim[i]
             if feat > 0:
                 bin_num = int((feat + factor / 2) / factor)
             else:
@@ -882,7 +894,7 @@ class MDPPrimitive(object):
 
         Returns
         -------
-        State :
+        MDPState :
             The decoded state.
 
         Notes
@@ -939,19 +951,19 @@ class MDPPrimitive(object):
         ...         "z": 2
         ...     }[key]
         ...
-        >>> State.description = {'LArm': {'x': 0, 'y': 1, 'z': 2}
+        >>> MDPState.description = {'LArm': {'x': 0, 'y': 1, 'z': 2}
         ...                      'RArm': {'x': 3, 'y': 4, 'z': 5}}
-        >>> State.key_to_index = staticmethod(my_key_to_index)
+        >>> MDPState.key_to_index = staticmethod(my_key_to_index)
 
         This specifies the mapping in both direction.
 
         >>> state = [0.1, 0.4, 0.3. 4.6. 2.5. 0.9]
         >>>
-        >>> mapping = State.description['LArm']
+        >>> mapping = MDPState.description['LArm']
         >>>
         >>> larm = np.zeros[len(mapping.keys())]
         >>> for key, axis in mapping.iteritems():
-        ...     larm[State.key_to_index(key)] = state[axis]
+        ...     larm[MDPState.key_to_index(key)] = state[axis]
         ...
         >>> print larm
         [0.1, 0.4, 0.3]
@@ -963,7 +975,7 @@ class MDPPrimitive(object):
 
 
 # noinspection PyAbstractClass,PyUnresolvedReferences
-class State(MDPPrimitive):
+class MDPState(MDPPrimitive):
     """Representation of the state.
 
     States are represented by an array of features.
@@ -993,6 +1005,10 @@ class State(MDPPrimitive):
         The number of states per dimension.
     description : dict
         A description of the features.
+    initial_states : list
+        List of initial states.
+    terminal_states : list
+        List of terminal states.
 
     Notes
     -----
@@ -1064,12 +1080,13 @@ class State(MDPPrimitive):
 
     Rather then setting the attributes directly, use the methods :meth:`set_nfeatures`,
     :meth:`set_dtype`, :meth:`set_description`, :meth:`set_discretized`, :meth:`set_minmax_features`,
-    and :meth:`set_states_per_dim` in order to enforce type checking.
+    :meth:`set_states_per_dim`, :meth:`set_initial_states`, and :meth:`set_terminal_states` in order
+    to enforce type checking.
 
     Examples
     --------
-    >>> State.description = {'LArm': {'x': 0, 'y': 1, 'z': 2}
-    ...                      'RArm': {'x': 3, 'y': 4, 'z': 5}}
+    >>> MDPState.set_description({'LArm': {'x': 0, 'y': 1, 'z': 2}
+    ...                      'RArm': {'x': 3, 'y': 4, 'z': 5}})
 
     This description identifies the features to be the x-y-z-position of
     the left and the right arm. The position into the feature array is given
@@ -1082,25 +1099,25 @@ class State(MDPPrimitive):
     ...         "z": 2
     ...     }[key]
     ...
-    >>> State.key_to_index = staticmethod(my_key_to_index)
+    >>> MDPState.key_to_index = staticmethod(my_key_to_index)
 
     This defines a mapping for each key.
 
     >>> state = [0.1, 0.4, 0.3. 4.6. 2.5. 0.9]
     >>>
-    >>> mapping = State.description['LArm']
+    >>> mapping = MDPState.description['LArm']
     >>>
     >>> larm = np.zeros[len(mapping.keys())]
     >>> for key, axis in mapping.iteritems():
-    ...     larm[State.key_to_index(key)] = state[axis]
+    ...     larm[MDPState.key_to_index(key)] = state[axis]
     ...
     >>> print larm
     [0.1, 0.4, 0.3]
 
     This extracts the features for the left arm from the `state` vector.
 
-    >>> s1 = State([0.1, 0.4, 0.2])
-    >>> s2 = State([0.5, 0.3, 0.5])
+    >>> s1 = MDPState([0.1, 0.4, 0.2])
+    >>> s2 = MDPState([0.5, 0.3, 0.5])
     >>> print s1 - s2
     [-0.4, 0.1, -0.3]
 
@@ -1118,17 +1135,251 @@ class State(MDPPrimitive):
     Multiplies two states in place.
 
     """
+
+    class _S(object):
+        def __init__(self, features, name=None):
+            self.name = name if name is not None else '*'
+            self.features = features
+
+        def __str__(self):
+            features = np.array_str(self.features)
+            return "\'" + self.name + "\':\t" + features if self.name else features
+
+        def __repr__(self):
+            features = np.array_str(self.features)
+            return "\'" + self.name + "\':\t" + features if self.name else features
+
+        def __len__(self):
+            return len(self.features)
+
     initial_states = None
-    """List of initial states.
-
-    :type: str | list"""
+    """:type: list[_S]"""
     terminal_states = None
-    """List of terminal states.
+    """:type: list[_S]"""
 
-    :type: str | list"""
+    @classmethod
+    def set_nfeatures(cls, n):
+        """Set the number of features.
+
+        Parameters
+        ----------
+        n : int
+            The number of features.
+
+        Raises
+        ------
+        ValueError
+            If `n` is not of type integer.
+
+        """
+        super(MDPState, cls).set_nfeatures(n)
+        cls._update_initial_and_terminal_states()
+
+    @classmethod
+    def set_description(cls, descr):
+        """Set the feature description.
+
+        This extracts the number of features from the description and checks
+        that it matches with the `nfeatures`. If `nfeatures` is None, `nfeatures`
+        is set to the extracted value.
+
+        Parameters
+        ----------
+        descr : dict
+            The feature description.
+
+        Raises
+        ------
+        ValueError
+            If the number of features extracted from the description does not
+            match `nfeatures` or if `name` isn't of type string.
+
+        Notes
+        -----
+        Use the `description` to encode action information. The information
+        should contain the list of all available feature combinations, the
+        name of each feature.
+
+        Examples
+        --------
+
+            A description of an action with three possible discrete actions:
+
+            ::
+
+                {
+                    "out": {"value": [-0.004]},
+                    "in": {"value": [0.004]},
+                    "kick": {"value": [-1.0]}
+                }
+
+            A description of an action with one possible continuous action with
+            name `move`, a value of `*` allows to find the action for every
+            feature array. Additional information encodes the feature name together
+            with its index into the feature array are given for each higher level
+            element of feature array:
+
+            ::
+
+                {
+                    "move": {
+                        "value": "*",
+                        "descr": {
+                            "LArm": {"dx": 0, "dy": 1, "dz": 2},
+                            "RArm": {"dx": 3, "dy": 4, "dz": 5},
+                            "LLeg": {"dx": 6, "dy": 7, "dz": 8},
+                            "RLeg": {"dx": 9, "dy": 10, "dz": 11},
+                            "Torso": {"dx": 12, "dy": 13, "dz": 14}
+                        }
+                    }
+                }
+
+            Similarly, a continuous state can be encoded as follows, which identifies
+            the name of each feature together with its index into the feature array:
+
+            ::
+
+                {
+                    "LArm": {"x": 0, "y": 1, "z": 2},
+                    "RArm": {"x": 3, "y": 4, "z": 5},
+                    "LLeg": {"x": 6, "y": 7, "z": 8},
+                    "RLeg": {"x": 9, "y": 10, "z": 11},
+                    "Torso": {"x": 12, "y": 13, "z": 14}
+                }
+
+            A discrete state can be encoded by identifying the position of each feature:
+
+            ::
+
+                "descr": {
+                    "image x-position": 0,
+                    "displacement (mm)": 1
+                }
+
+            Alternatively, the feature can be identified by a list of features, giving he
+            positional description:
+
+            ::
+
+                ["image x-position", "displacement (mm)"]
+
+        """
+        super(MDPState, cls).set_description(descr)
+        cls._update_initial_and_terminal_states()
+
+    @classmethod
+    def set_minmax_features(cls, minmax, *args):
+        """Sets the minimum and maximum value for each feature.
+
+        This extracts the number of features from the `_min` and `_max`
+        values and ensures that it matches with `nfeatures`. If `nfeatures`
+        is None, the `nfeatures` attribute is set to the extracted value.
+
+        Parameters
+        ----------
+        _min : array_like, shape(`nfeatures`,)
+            The minimum value for each feature
+        _max : array_like, shape(`nfeatures`,)
+            The maximum value for each feature
+
+        Raises
+        ------
+        ValueError
+            If the arrays are not one-dimensional vectors, the shapes of the
+            arrays don't match, or the number of features does not agree with
+            the attribute `nfeatures`.
+
+        """
+        super(MDPState, cls).set_minmax_features(minmax, *args)
+        cls._update_initial_and_terminal_states()
+
+    @classmethod
+    def set_states_per_dim(cls, nstates):
+        """Sets the number of states per feature.
+
+        This extracts the number of features from `nstates` and compares
+        it to the attribute `nfeatures`. If it doesn't match, an exception
+        is thrown. If the `nfeatures` attribute is None, `nfeatures` is set
+        to the extracted value.
+
+        Parameters
+        ----------
+        nstates : array_like, shape (`nfeatures`,)
+            The number of states per features
+
+        Raises
+        ------
+        ValueError
+            If the array is not a vector of length `nfeatures`.
+
+        """
+        super(MDPState, cls).set_states_per_dim(nstates)
+        cls._update_initial_and_terminal_states()
+
+    @classmethod
+    def set_initial_states(cls, states):
+        """Set the initial states.
+
+        Parameters
+        ----------
+        states : str or MDPState or array_like or list
+            The initial state(s).
+
+        Raises
+        ------
+        ValueError
+            If both `name` and `features` are unspecified.
+
+        """
+        cls.initial_states = cls._set_initial_and_terminal_states(states)
+
+    @classmethod
+    def set_terminal_states(cls, states):
+        """Set the terminal states.
+
+        Parameters
+        ----------
+        states : str or ndarray or MDPState or list[str|ndarray|MDPState]
+            The initial state(s).
+
+        Raises
+        ------
+        ValueError
+            If both `name` and `features` are unspecified.
+
+        """
+        cls.terminal_states = cls._set_initial_and_terminal_states(states)
 
     def __init__(self, features, name=None):
-        super(State, self).__init__(features, name)
+        super(MDPState, self).__init__(features, name)
+        self._update_initial_and_terminal_states()
+
+    @classmethod
+    def random_initial_state(cls):
+        """Return a random initial state.
+
+        Returns
+        -------
+        str or MDPState :
+            A random initial state.
+
+        """
+        s = None
+        if cls.initial_states is not None:
+            s = np.random.choice(cls.initial_states)
+
+            if np.result_type(s.features) == np.object:
+                if s.features.ndim > 1 or np.any([isinstance(f, tuple) for f in s.features]):
+                    features = []
+                    for f in s.features:
+                        if isinstance(f, tuple) or isinstance(f, np.ndarray):
+                            features.append(random_floats(f[0], f[1]))
+                        else:
+                            features.append(f)
+                    s = cls(features, s.name)
+            else:
+                s = cls(s.features, s.name)
+        return s
 
     def is_initial(self):
         """Checks if the state is an initial state.
@@ -1139,12 +1390,14 @@ class State(MDPPrimitive):
             Whether the state is an initial state or not.
 
         """
-        if State.initial_states is None:
+        if MDPState.initial_states is None:
             return False
 
-        if isinstance(State.initial_states, list):
-            return self.name in State.initial_states
-        return self.name == self.initial_states
+        for s in MDPState.initial_states:
+            value = self._is_equal(s)
+            if value:
+                return value
+        return False
 
     def is_terminal(self):
         """Checks if the state is a terminal state.
@@ -1155,12 +1408,14 @@ class State(MDPPrimitive):
             Whether the state is a terminal state or not.
 
         """
-        if State.terminal_states is None:
+        if MDPState.terminal_states is None:
             return False
 
-        if isinstance(State.terminal_states, list):
-            return self.name in State.terminal_states
-        return self.name == self.terminal_states
+        for s in MDPState.terminal_states:
+            value = self._is_equal(s)
+            if value:
+                return value
+        return False
 
     # noinspection PyMethodMayBeStatic
     def is_valid(self):
@@ -1186,9 +1441,67 @@ class State(MDPPrimitive):
         """
         return True
 
+    @classmethod
+    def _set_initial_and_terminal_states(cls, states):
+        if isinstance(states, list):
+            state_list = []
+            for state in states:
+                state_list.append(cls._format_state(state))
+        else:
+            state_list = [cls._format_state(states)]
+        return state_list
+
+    @classmethod
+    def _format_state(cls, state):
+        nfeatures = cls.nfeatures if cls.nfeatures is not None else 1
+        if isinstance(state, basestring):
+            features = np.empty(nfeatures)
+            features[:] = np.NaN
+            # noinspection PyProtectedMember
+            state = cls._S(features, state)
+        elif isinstance(state, (list, np.ndarray)):
+            if np.any([isinstance(f, (list, tuple)) for f in state]):
+                state = np.asarray(state, dtype=np.object)
+            else:
+                state = np.asarray(state, dtype=cls.dtype)
+            dim = state.size
+            if dim == 1:
+                state.shape = (1,)
+            # noinspection PyProtectedMember
+            state = cls._S(state)
+        if state.name == '*' and np.result_type(state.features) != np.object and np.all(np.isnan(state.features)):
+            raise ValueError('Initial states must identify `name`, `features` or both.')
+        return state
+
+    @classmethod
+    def _update_initial_and_terminal_states(cls):
+        if cls.initial_states is not None and len(cls.initial_states[0]) != cls.nfeatures:
+            for s in cls.initial_states:
+                s.features = np.tile(s.features, cls.nfeatures)
+        if cls.terminal_states is not None and len(cls.terminal_states[0]) != cls.nfeatures:
+            for s in cls.terminal_states:
+                s.features = np.tile(s.features, cls.nfeatures)
+
+    def _is_equal(self, state):
+        value = True
+        if state.name != '*':
+            value = value and self.name == state.name
+        if np.result_type(state.features) == np.object:
+            if state.features.ndim > 1 or np.any([isinstance(f, tuple) for f in state.features]):
+                for f1, f2 in zip(self._features, state.features):
+                    if isinstance(f2, tuple) or isinstance(f2, np.ndarray):
+                        value = value and f2[0] <= f1 <= f2[1]
+                    else:
+                        value = value and f1 == f2
+            else:
+                value = value and self == state
+        elif not np.all(np.isnan(state.features)):
+            value = value and self == state
+        return value
+
 
 # noinspection PyAbstractClass,PyUnresolvedReferences
-class Action(MDPPrimitive):
+class MDPAction(MDPPrimitive):
     """Representation of an action.
 
     Actions are represented by an array of features.
@@ -1293,7 +1606,7 @@ class Action(MDPPrimitive):
 
     Examples
     --------
-    >>> Action.set_description({'LArm': {'dx': 0, 'dy': 1, 'dz': 2}
+    >>> MDPAction.set_description({'LArm': {'dx': 0, 'dy': 1, 'dz': 2}
     ...                         'RArm': {'dx': 3, 'dy': 4, 'dz': 5}})
 
     This description identifies the features to be the delta x-y-z-position of
@@ -1307,25 +1620,25 @@ class Action(MDPPrimitive):
     ...         "dz": 2
     ...     }[key]
     ...
-    >>> Action.key_to_index = staticmethod(my_key_to_index)
+    >>> MDPAction.key_to_index = staticmethod(my_key_to_index)
 
     This defines a mapping for each key.
 
     >>> action = [0.1, 0.4, 0.3. 4.6. 2.5. 0.9]
     >>>
-    >>> mapping = Action.description['LArm']
+    >>> mapping = MDPAction.description['LArm']
     >>>
     >>> larm = np.zeros[len(mapping.keys())]
     >>> for key, axis in mapping.iteritems():
-    ...     larm[Action.key_to_index(key)] = action[axis]
+    ...     larm[MDPAction.key_to_index(key)] = action[axis]
     ...
     >>> print larm
     [0.1, 0.4, 0.3]
 
     This extracts the features for the left arm from the `action` vector.
 
-    >>> a1 = Action([0.1, 0.4, 0.2])
-    >>> a2 = Action([0.5, 0.3, 0.5])
+    >>> a1 = MDPAction([0.1, 0.4, 0.2])
+    >>> a2 = MDPAction([0.5, 0.3, 0.5])
     >>> print a1 - a2
     [-0.4, 0.1, -0.3]
 
@@ -1343,10 +1656,11 @@ class Action(MDPPrimitive):
     Multiplies two actions in place.
 
     """
-    def __init__(self, features, name=None):
-        super(Action, self).__init__(features, name)
 
-        self._name = name if name is not None else Action.get_name(self._features)
+    def __init__(self, features, name=None):
+        super(MDPAction, self).__init__(features, name)
+
+        self._name = name if name is not None else MDPAction.get_name(self._features)
 
     @classmethod
     def get_name(cls, features):
@@ -1391,7 +1705,7 @@ class Action(MDPPrimitive):
 
         Returns
         -------
-        Action :
+        MDPAction :
             A `no-op` action.
 
         """

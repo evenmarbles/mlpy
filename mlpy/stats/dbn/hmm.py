@@ -55,10 +55,10 @@ class HMM(EM):
         Matrix of prior transition probabilities between states.
     transmat : array, shape (`ncomponents`, `ncomponents`)
         Matrix of transition probabilities between states.
-    emission : cond_rv_frozen
-        The conditional probability distribution used for the emission.
     emission_prior : normal_invwishart
         Initial emission parameters, a normal-inverse Wishart distribution.
+    emission : cond_rv_frozen
+        The conditional probability distribution used for the emission.
     n_iter : int
         Number of iterations to perform during training, optional.
     thresh : float
@@ -642,10 +642,10 @@ class DiscreteHMM(HMM):
         Matrix of prior transition probabilities between states.
     transmat : array, shape (`ncomponents`, `ncomponents`)
         Matrix of transition probabilities between states.
-    emission : cond_rv_frozen
-        The conditional probability distribution used for the emission.
     emission_prior : normal_invwishart
         Initial emission parameters, a normal-inverse Wishart distribution.
+    emission : cond_rv_frozen
+        The conditional probability distribution used for the emission.
     n_iter : int
         Number of iterations to perform during training, optional.
     thresh : float
@@ -747,10 +747,10 @@ class GaussianHMM(HMM):
         Matrix of prior transition probabilities between states.
     transmat : array, shape (`ncomponents`, `ncomponents`)
         Matrix of transition probabilities between states.
-    emission : conditional_normal_frozen
-        The conditional probability distribution used for the emission.
     emission_prior : normal_invwishart
         Initial emission parameters, a normal-inverse Wishart distribution.
+    emission : conditional_normal_frozen
+        The conditional probability distribution used for the emission.
     n_iter : int
         Number of iterations to perform during training, optional.
     thresh : float
@@ -820,7 +820,7 @@ class GaussianHMM(HMM):
 
     def __init__(self, ncomponents=1, startprob_prior=None, startprob=None, transmat_prior=None, transmat=None,
                  emission_prior=None, emission=None, n_iter=None, thresh=None, verbose=None):
-        super(GaussianHMM, self).__init__(ncomponents, startprob_prior, transmat_prior, startprob, transmat,
+        super(GaussianHMM, self).__init__(ncomponents, startprob_prior, startprob, transmat_prior, transmat,
                                           emission_prior, emission, n_iter, thresh, verbose)
         if emission:
             self.nfeatures = emission.dim
@@ -909,10 +909,10 @@ class StudentHMM(HMM):
         Matrix of prior transition probabilities between states.
     transmat : array, shape (`ncomponents`, `ncomponents`)
         Matrix of transition probabilities between states.
-    emission : conditional_student_frozen
-        The conditional probability distribution used for the emission.
     emission_prior : normal_invwishart
         Initial emission parameters, a normal-inverse Wishart distribution.
+    emission : conditional_student_frozen
+        The conditional probability distribution used for the emission.
     n_iter : int
         Number of iterations to perform during training, optional.
     thresh : float
@@ -1051,10 +1051,10 @@ class GMMHMM(HMM):
         Matrix of prior transition probabilities between states.
     transmat : array, shape (`ncomponents`, `ncomponents`)
         Matrix of transition probabilities between states.
-    emission : conditional_mix_normal_frozen
-        The conditional probability distribution used for the emission.
     emission_prior : normal_invwishart
         Initial emission parameters, a normal-inverse Wishart distribution.
+    emission : conditional_mix_normal_frozen
+        The conditional probability distribution used for the emission.
     n_iter : int
         Number of iterations to perform during training, optional.
     thresh : float

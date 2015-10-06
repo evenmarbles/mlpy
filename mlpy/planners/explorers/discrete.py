@@ -37,7 +37,7 @@ class DiscreteExplorer(IExplorer):
 
         Returns
         -------
-        Action :
+        MDPAction :
             The action with maximum q-value that can be taken
             from the given state.
 
@@ -57,7 +57,7 @@ class DiscreteExplorer(IExplorer):
 
         Returns
         -------
-        Action :
+        MDPAction :
             The action with maximum qvalue that can be taken from
             the given state.
 
@@ -116,7 +116,7 @@ class EGreedyExplorer(DiscreteExplorer):
 
         Returns
         -------
-        Action :
+        MDPAction :
             The action with maximum qvalue that can be taken from
             the given state.
 
@@ -188,7 +188,7 @@ class SoftmaxExplorer(DiscreteExplorer):
 
         Returns
         -------
-        Action :
+        MDPAction :
             The action with maximum q-value that can be taken
             from the given state.
 
@@ -199,6 +199,9 @@ class SoftmaxExplorer(DiscreteExplorer):
             self._tau *= self._decay
 
             pmf = gibbs.pmf(np.asarray(qvalues), self._tau)
+            if not sum(pmf) == 1:
+                assert ((pmf.sum() - 1) <= np.finfo(np.float16).eps), "Probabilities do not sum to 1"
+                pmf /= pmf.sum()
             action = actions[np.random.choice(np.arange(len(np.asarray(qvalues))), p=pmf)]
 
         return action

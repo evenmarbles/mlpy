@@ -17,9 +17,9 @@ Reinforcement learning
    :toctree: generated/
    :nosignatures:
 
-   ~rl.RLLearner
    ~rl.QLearner
-   ~rl.RLDTLearner
+   ~rl.Cacla
+   ~rl.ModelBasedLearner
 
 """
 from .. import ILearner
@@ -39,7 +39,6 @@ class IOnlineLearner(ILearner):
         If None is given, the learner state is not saved. Default is None.
 
     """
-
     @property
     def type(self):
         """This learner is of type `online`.
@@ -54,6 +53,41 @@ class IOnlineLearner(ILearner):
 
     def __init__(self, filename=None):
         super(IOnlineLearner, self).__init__(filename)
+
+    def end(self, experience):
+        """End the episode.
+
+        Perform all end of episode tasks and save the state of the
+        learner to file.
+
+        Parameters
+        ----------
+        experience : Experience
+            The agent's experience consisting of the previous state, the action performed
+            in that state, the current state and the reward awarded.
+
+        """
+        super(IOnlineLearner, self).end()
+
+    def learn(self, experience):
+        """Learn a policy from the experience.
+
+        Perform the learning step to derive a new policy taking the
+        latest experience into account.
+
+        Parameters
+        ----------
+        experience : Experience
+            The agent's experience consisting of the previous state, the action performed
+            in that state, the current state and the reward awarded.
+
+        Raises
+        ------
+        NotImplementedError
+            If the child class does not implement this function.
+
+        """
+        raise NotImplementedError
 
 
 from .rl import *

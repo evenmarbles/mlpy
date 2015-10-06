@@ -6,9 +6,12 @@ Continuous Action and State Model Learner (CASML)
    :toctree: generated/
    :nosignatures:
 
-   CASMLReuseMethod
-   CASMLRevisionMethod
-   CASMLRetentionMethod
+   CbTReuseMethod
+   CbTRetentionMethod
+   CbVRevisionMethod
+   CbVRetentionMethod
+   CbTData
+   CbVData
    CASML
 
 """
@@ -16,6 +19,7 @@ from __future__ import division, print_function, absolute_import
 # noinspection PyUnresolvedReferences
 from six.moves import range
 
+import copy
 import numpy as np
 import matplotlib
 from matplotlib import pyplot as plt
@@ -25,70 +29,26 @@ from ...auxiliary.plotting import Arrow3D
 from ...knowledgerep.cbr.engine import CaseBase
 from ...knowledgerep.cbr.methods import IReuseMethod, IRevisionMethod, IRetentionMethod
 from ...stats.dbn.hmm import GaussianHMM
-from ..stateaction import Experience, State
+from ..stateaction import Experience, MDPState, MDPStateData
 from .. import IMDPModel
 
-__all__ = ['CASML']
+__all__ = ['CbTData', 'CbVData', 'CASML']
 
 
-class CASMLReuseMethod(IReuseMethod):
-    """The reuse method implementation for :class:`CASML`.
+class CbTReuseMethod(IReuseMethod):
+    """The reuse method for the transition case base implementation for :class:`CASML`.
 
     The solutions of the best (or set of best) retrieved cases are used to construct
     the solution for the query case; new generalizations and specializations may occur
     as a consequence of the solution transformation.
 
-    The CASML reuse method further specializes the solution by identifying cases similar
-    in both state and action.
-
-    """
-
-    # noinspection PyUnusedLocal
-    def __init__(self):
-        super(CASMLReuseMethod, self).__init__()
-
-    # noinspection PyMethodMayBeStatic
-    def execute(self, case, case_matches, fn_retrieve=None):
-        """Execute reuse step.
-
-        Take both similarity in state and in actions into account.
-
-        Parameters
-        ----------
-        case : Case
-            The query case.
-        case_matches : dict[int, CaseMatch]
-            The solution identified through the similarity measure.
-        fn_retrieve : callable
-            Callback for accessing the case base's 'retrieval' method.
-
-        Returns
-        -------
-        revised_matches : dict[int, CaseMatch]
-            The revised solution.
-
-        """
-        cluster = []
-        id_map = {}
-        for i, m in enumerate(case_matches.itervalues()):
-            cluster.append(m.case["act"])
-            id_map[i] = m.case.id
-
-        revised_matches = fn_retrieve(case, "act", False, **{"data": cluster, "id_map": id_map})
-        for id_, m in revised_matches.items():
-            m.set_similarity("state", case_matches[id_].get_similarity("state"))
-
-        return revised_matches
-    
-
-class CASMLRevisionMethod(IRevisionMethod):
-    """The revision method implementation for :class:`CASML`.
-
-    The solutions provided by the query case is evaluated and information about whether the solution
-    has or has not provided a desired outcome is gathered.
+    The CASML reuse method for the transition case base further specializes the solution
+    by identifying cases similar in both state and action.
 
     Parameters
     ----------
+    owner : CaseBase
+        A pointer to the owning case base.
     rho : float, optional
         The permitted error of the similarity measure. Default is 0.99.
     plot_revision : bool, optional
@@ -105,9 +65,9 @@ class CASMLRevisionMethod(IRevisionMethod):
 
     Notes
     -----
-    The CASML revision method further narrows down the solutions to the query case by identifying
-    whether the actions are similar by ensuring that the actions are cosine similar within the
-    permitted error :math:`\\rho`:
+    The CASML reuse method for the transition case base further narrows down the solutions to
+    the query case by identifying whether the actions are similar by ensuring that the actions
+    are cosine similar within the permitted error :math:`\\rho`:
 
     .. math::
 
@@ -115,8 +75,8 @@ class CASMLRevisionMethod(IRevisionMethod):
 
     """
 
-    def __init__(self, rho=None, plot_revision=None, plot_revision_params=None):
-        super(CASMLRevisionMethod, self).__init__()
+    def __init__(self, owner, rho=None, plot_reuse=None, plot_reuse_params=None):
+        super(CbTReuseMethod, self).__init__(owner)
 
         self._fig1, self._fig2, self._fig3 = None, None, None
         self._ax1, self._ax2, self._ax3 = None, None, None
@@ -124,19 +84,21 @@ class CASMLRevisionMethod(IRevisionMethod):
         self._rho = rho if rho is not None else 0.99
         """:type: float"""
 
-        self._plot = plot_revision if plot_revision is not None else False
+        self._plot = plot_reuse if plot_reuse is not None else False
         """:type: bool"""
-
-        if plot_revision_params is not None:
-            if plot_revision_params not in ["origin_to_query", "original_origin"]:
-                raise ValueError(
-                    "%s is not a valid plot parameter for revision method" % plot_revision_params)
-            self._plot_params = plot_revision_params
-        else:
+        if self._plot:
             self._plot_params = "origin_to_query"
+            if plot_reuse_params is not None:
+                if plot_reuse_params not in ["origin_to_query", "original_origin"]:
+                    raise ValueError(
+                        "%s is not a valid plot parameter for revision method" % plot_reuse_params)
+                self._plot_params = plot_reuse_params
 
-    def execute(self, case, case_matches, **kwargs):
-        """Execute the revision step.
+    # noinspection PyMethodMayBeStatic
+    def execute(self, case, case_matches):
+        """Execute reuse step.
+
+        Take both similarity in state and in actions into account.
 
         Parameters
         ----------
@@ -147,19 +109,28 @@ class CASMLRevisionMethod(IRevisionMethod):
 
         Returns
         -------
-        case_matches : dict[int, CaseMatch]
-            the corrected solution.
+        revised_matches : dict[int, CaseMatch]
+            The revised solution.
 
         """
+        cluster = []
+        id_map = {}
+        for i, m in enumerate(case_matches.itervalues()):
+            cluster.append(m.case["act"])
+            id_map[i] = m.case.id
 
-        for key, cm in case_matches.iteritems():
+        revised_matches = self._owner.retrieve(case, "act", False, **{"data": cluster, "id_map": id_map})
+        for id_, m in revised_matches.items():
+            m.set_similarity("state", case_matches[id_].get_similarity("state"))
+
+        for key, cm in revised_matches.iteritems():
             if cm.get_similarity('act') >= self._rho:
                 cm.is_solution = True
 
         if self._plot:
-            self.plot_data(case, case_matches)
+            self.plot_data(case, revised_matches)
 
-        return case_matches
+        return revised_matches
 
     def plot_data(self, case, case_matches, **kwargs):
         """Plot the data during the revision step.
@@ -232,19 +203,19 @@ class CASMLRevisionMethod(IRevisionMethod):
             color = "k"
             if cm.is_solution:
                 color = "g"
-            a = Arrow3D([x, x + vx], [y, y + vy], [z, z + vz], 
-                        mutation_scale=10, 
-                        lw=1, 
-                        arrowstyle="-|>", 
+            a = Arrow3D([x, x + vx], [y, y + vy], [z, z + vz],
+                        mutation_scale=10,
+                        lw=1,
+                        arrowstyle="-|>",
                         color=color)
             self._ax2.add_artist(a)
 
         proxies = []
         legend = []
         if self._plot_params == "original_origin":
-            proxies.append(matplotlib.lines.Line2D([0], [0], 
-                                                   linestyle="none", 
-                                                   markeredgecolor='k', c='k', 
+            proxies.append(matplotlib.lines.Line2D([0], [0],
+                                                   linestyle="none",
+                                                   markeredgecolor='k', c='k',
                                                    marker='o'))
             legend.append('case')
 
@@ -288,10 +259,10 @@ class CASMLRevisionMethod(IRevisionMethod):
                 [x, y, z] = cm.case["state"]
                 self._ax3.scatter(x, y, z, edgecolors=color, c=color, marker='o')
 
-            a = Arrow3D([x, x + vx], [y, y + vy], [z, z + vz], 
-                        mutation_scale=10, 
-                        lw=1, 
-                        arrowstyle="-|>", 
+            a = Arrow3D([x, x + vx], [y, y + vy], [z, z + vz],
+                        mutation_scale=10,
+                        lw=1,
+                        arrowstyle="-|>",
                         color=color)
             self._ax3.add_artist(a)
 
@@ -309,14 +280,16 @@ class CASMLRevisionMethod(IRevisionMethod):
         self._fig3.canvas.draw()
 
 
-class CASMLRetentionMethod(IRetentionMethod):
-    """The retention method implementation for :class:`CASML`.
+class CbTRetentionMethod(IRetentionMethod):
+    """The retention method for the transition case base implementation for :class:`CASML`.
 
     When the new problem-solving experience can be stored or not stored in memory,
     depending on the revision outcomes and the CBR policy regarding case retention.
 
     Parameters
     ----------
+    owner : CaseBase
+        A pointer to the owning case base.
     tau : float, optional
         The maximum permitted error when comparing most similar solution.
         Default is 0.8.
@@ -329,7 +302,8 @@ class CASMLRetentionMethod(IRetentionMethod):
 
     Notes
     -----
-    The CASML retention method considers query cases as predicted correctly if
+    The CASML retention method for the transition case base considers query cases as
+    predicted correctly if:
 
     1. the query case is within the maximum permitted error :math:`\\tau` of
        the most similar solution case:
@@ -347,8 +321,8 @@ class CASMLRetentionMethod(IRetentionMethod):
 
     """
 
-    def __init__(self, tau=None, sigma=None, plot_retention=None):
-        super(CASMLRetentionMethod, self).__init__()
+    def __init__(self, owner, tau=None, sigma=None, plot_retention=None):
+        super(CbTRetentionMethod, self).__init__(owner)
 
         self._fig = None
         self._ax1, self._ax2, self._ax3 = None, None, None
@@ -362,7 +336,7 @@ class CASMLRetentionMethod(IRetentionMethod):
         self._plot = plot_retention if plot_retention is not None else False
         """:type: bool"""
 
-    def execute(self, case, case_matches, fn_add=None):
+    def execute(self, case, case_matches):
         """Execute the retention step.
 
         Parameters
@@ -371,8 +345,6 @@ class CASMLRetentionMethod(IRetentionMethod):
             The query case
         case_matches : dict[int, CaseMatch]
             The solution identified through the similarity measure.
-        fn_add : callable
-            Callback for accessing the case base's 'add' method.
 
         """
         if self._plot:
@@ -394,7 +366,7 @@ class CASMLRetentionMethod(IRetentionMethod):
             "state") if case_matches[x].is_solution else np.inf)].get_similarity("state") > self._tau
 
         if do_add:
-            fn_add(case)
+            self._owner.add(case)
         else:
             print("Case {0} was not added".format(case.id))
 
@@ -463,10 +435,10 @@ class CASMLRetentionMethod(IRetentionMethod):
             color = "k"
             if cm.is_solution:
                 color = "g"
-            a = Arrow3D([x, x + vx], [y, y + vy], [z, z + vz], 
-                        mutation_scale=10, 
-                        lw=1, 
-                        arrowstyle="-|>", 
+            a = Arrow3D([x, x + vx], [y, y + vy], [z, z + vz],
+                        mutation_scale=10,
+                        lw=1,
+                        arrowstyle="-|>",
                         color=color)
             self._ax2.add_artist(a)
 
@@ -518,21 +490,119 @@ class CASMLRetentionMethod(IRetentionMethod):
         self._fig.canvas.draw()
 
 
-# noinspection PyAbstractClass
-class CASML(IMDPModel):
-    """Continuous Action and State Model Learner (CASML).
+class CbVRevisionMethod(IRevisionMethod):
+    """The revision method for the value case base implementation for :class:`CASML`.
+
+    The solutions provided by the query case is evaluated and information about whether the solution
+    has or has not provided a desired outcome is gathered.
+
+    Parameters
+    ----------
+    owner : CaseBase
+        A pointer to the owning case base.
+
+    Notes
+    -----
+    The CASML revision method for the value case base revises the state value :math:`v_k` associated
+    with each nearest neighbor :math:`c_{V,k} \\in \\text{kNN}:(V, c_V)` to its contribution to the
+    error in estimating the value of :math:`v_{i-1}`:
+
+    .. math::
+
+        v_k += \\alpha(r_{i-1} + \\gamma v_i - v_k) * \\frac{K(d(c_{V, i}, c_{V, k}))}{\\sum_{c_{V, j} \\in k\\text{NN}(V, c_v)} K(d(c_{V, j}, c_{V, j}))}
+
+    where :math:`v_k` is the value associated with neighbor math:`c_{V, k}`, :math:`\\alpha (0 \\le \\alpha \\le 1)`
+    is the learning rate, :math:`\\gamma (0 \\le \\gamma \\le 1)` is a geometric discount factor, and Gaussian kernel
+    function :math:`K(d) = exp(-d^2)` determines the relative contribution of the k-nearest neighbors.
+
+    """
+
+    def __init__(self, owner):
+        super(CbVRevisionMethod, self).__init__(owner)
+
+    def execute(self, case, case_matches):
+        """Execute the revision step.
+
+        Parameters
+        ----------
+        case : Case
+            The query case.
+        case_matches : dict[int, CaseMatch]
+            The solution identified through the similarity measure.
+
+        Returns
+        -------
+        case_matches : dict[int, CaseMatch]
+            the corrected solution.
+
+        """
+        return case_matches
+
+
+class CbVRetentionMethod(IRetentionMethod):
+    """The retention method for the value case base implementation for :class:`CASML`.
+
+    When the new problem-solving experience can be stored or not stored in memory,
+    depending on the revision outcomes and the CBR policy regarding case retention.
+
+    Parameters
+    ----------
+    owner : CaseBase
+        A pointer to the owning case base.
+    tau : float, optional
+        The maximum permitted error when comparing most similar solution.
+        Default is 0.05.
+
+    Notes
+    -----
+    The CASML retention method for the value case base considers query cases as predicted correctly if
+    the query case is within the maximum permitted error :math:`\\tau` of
+    the most similar solution case:
+
+    .. math::
+
+       d(\\text{case}, 1\\text{NN}(C_V, \\text{case})) < \\tau
+
+    """
+
+    def __init__(self, owner, tau=None):
+        super(CbVRetentionMethod, self).__init__(owner)
+        self._tau = tau if tau is not None else 0.05
+        """:type: float"""
+
+    def execute(self, case, case_matches):
+        """Execute the retention step.
+
+        Parameters
+        ----------
+        case : Case
+            The query case
+        case_matches : dict[int, CaseMatch]
+            The solution identified through the similarity measure.
+
+        """
+        if not case_matches or case_matches[min(case_matches, key=lambda x: case_matches[x].get_similarity(
+                "state") if case_matches[x].is_solution else np.inf)].get_similarity("state") > self._tau:
+            self._owner.add(case)
+        else:
+            print("Case {0} was not added".format(case.id))
+
+
+class CbTData(object):
+    """Transition case base data.
 
     Parameters
     ----------
     case_template : dict
-        The template from which to create a new case.
+        The template from which to create a new case for the **transition case base**.
 
             :Example:
 
                 An example template for a feature named `state` with the
-                specified feature parameters. `data` is the data from which
-                to extract the case from. In this example it is expected that
-                `data` has a member variable `state`.
+                specified feature parameters and a feature named `state`.
+                `data` is the data from which to extract the case from.
+                In this example it is expected that `data` has a member
+                variable `state`.
 
                 ::
 
@@ -544,6 +614,12 @@ class CASML(IMDPModel):
                             "retrieval_method": "radius-n",
                             "retrieval_method_params": 0.01
                         },
+                        "act": {
+                            "type": "float",
+                            "value": "data.action",
+                            "is_index": False,
+                            "retrieval_method": "cosine",
+                        },
                         "delta_state": {
                             "type": "float",
                             "value": "data.next_state - data.state",
@@ -552,53 +628,191 @@ class CASML(IMDPModel):
                     }
 
     rho : float, optional
-        The maximum permitted error when comparing cosine  similarity of
-        actions. Default is 0.99.
+        The maximum permitted error when comparing cosine similarity of
+        actions in the transition case base. Default is 0.99.
     tau : float, optional
-        The maximum permitted error when comparing most similar solution.
+        The maximum permitted error when comparing most similar solutions in
+        the transition case base.
         Default is 0.8.
     sigma : float, optional
         The maximum permitted error when comparing actual with estimated
         transitions. Default is 0.2.
+
+    Additional Parameters
+    ---------------------
+    plot_retrieval : bool, optional
+        Whether to plot the result of the retrieval method. Default is False.
+    plot_retrieval_names : str or list[str], optional
+        The names of the feature which to plot.
+    plot_reuse : bool, optional
+        Whether to plot the result of the reuse method. Default is False.
+    plot_reuse_params : {"origin_to_query", "original_origin"}, optional
+        The location of the origin. Default is "origin_to_query"
+    plot_retention : bool, optional
+        Whether to plot the results of the retention method. Default is False.
+
+    """
+
+    def __init__(self, case_template, rho=None, tau=None, sigma=None, **kwargs):
+        self.case_template = case_template
+
+        self.reuse_method = 'CbTReuseMethod'
+        self.reuse_method_params = {'rho': rho}
+        for k, v in kwargs.iteritems():
+            if k in ["plot_reuse", "plot_reuse_params"]:
+                self.reuse_method_params[k] = kwargs.pop(k)
+
+        self.retention_method = 'CbTRetentionMethod'
+        self.retention_method_params = {'tau': tau, 'sigma': sigma}
+        for k, v in kwargs.iteritems():
+            if k in ['plot_retention']:
+                self.retention_method_params[k] = kwargs.pop(k)
+
+        for key, value in kwargs.iteritems():
+            setattr(self, key, value)
+
+
+class CbVData(object):
+    """Value case base data.
+
+    Parameters
+    ----------
+    case_template : dict
+        The template from which to create a new case for the **transition case base**.
+
+            :Example:
+
+                An example template for a feature named `state` with the
+                specified feature parameters and a feature named `state`.
+                `data` is the data from which to extract the case from.
+                In this example it is expected that `data` has a member
+                variable `state`.
+
+                ::
+
+                    {
+                        "state": {
+                            "type": "float",
+                            "value": "data.state",
+                            "is_index": True,
+                            "retrieval_method": "radius-n",
+                            "retrieval_method_params": 0.01
+                        },
+                        "value": {
+                            "type": "float",
+                            "value": "data.action",
+                            "is_index": False,
+                            "retrieval_method": "cosine",
+                        },
+                        "delta_state": {
+                            "type": "float",
+                            "value": "data.next_state - data.state",
+                            "is_index": False,
+                        }
+                    }
+
+    tau : float, optional
+        The maximum permitted error when comparing most similar solutions in
+        the transition case base.
+        Default is 0.8.
+
+    """
+
+    def __init__(self, case_template, tau=None, **kwargs):
+        self.case_template = case_template
+
+        self.reuse_method = 'CbVReuseMethod'
+
+        self.revision_method = 'CbVRevisionMethod'
+
+        self.retention_method = 'CbVRetentionMethod'
+        self.retention_method_params = {'tau': tau}
+
+        for key, value in kwargs.iteritems():
+            setattr(self, key, value)
+
+
+# noinspection PyAbstractClass
+class CASML(IMDPModel):
+    """Continuous Action and State Model Learner (CASML).
+
+    Parameters
+    ----------
+    cbtdata : CbTData
+        The transition case base data.
+    cbvdata : CbVData
+        The value case base data.
     ncomponents : int, optional
         Number of states of the hidden Markov model. Default is 1.
-    revision_method_params : dict, optional
-        Additional initialization parameters for :class:`CASMLRevisionMethod`.
-    retention_method_params : dict, optional
-        Additional initialization parameters for :class:`CASMLRetentionMethod`.
-    case_base_params : dict, optional
-        Initialization parameters for :class:`.CaseBase`.
-    hmm_params : dict, optional
-        Additional initialization parameters for :class:`.GaussianHMM`.
     proba_calc_method : str, optional
         The method used to calculate the probability distribution for the initial
         states. Default is DefaultProbaCalcMethod.
 
+    Additional Parameters
+    ---------------------
+    startprob_prior : array, shape (`ncomponents`,)
+        Initial state occupation prior distribution.
+    startprob : array, shape (`ncomponents`,)
+        Initial state occupation distribution.
+    transmat_prior : array, shape (`ncomponents`, `ncomponents`)
+        Matrix of prior transition probabilities between states.
+    transmat : array, shape (`ncomponents`, `ncomponents`)
+        Matrix of transition probabilities between states.
+    emission_prior : normal_invwishart
+        Initial emission parameters, a normal-inverse Wishart distribution.
+    emission : conditional_normal_frozen
+        The conditional probability distribution used for the emission.
+    n_iter : int
+        Number of iterations to perform during training, optional.
+    thresh : float
+        Convergence threshold, optional.
+    verbose : bool
+        Controls if debug information is printed to the console, optional.
+
     """
-    def __init__(self, case_template, rho=None, tau=None, sigma=None, ncomponents=1,
-                 revision_method_params=None, retention_method_params=None, 
-                 case_base_params=None, hmm_params=None, proba_calc_method=None):
+    @property
+    def statespace(self):
+        return self._statespace
+
+    @property
+    def transition_cases(self):
+        return self._cb_t.cases
+
+    @property
+    def value_cases(self):
+        return self._cb_v.cases
+
+    def __init__(self, cbtdata, cbvdata=None, ncomponents=1, proba_calc_method=None, n_init=1, actions=None, **kwargs):
         super(CASML, self).__init__(proba_calc_method)
-        
-        revision_method_params = revision_method_params if revision_method_params is not None else {}
-        revision_method_params.update({'rho': rho})
-        
-        retention_method_params = retention_method_params if retention_method_params is not None else {}
-        retention_method_params.update({'tau': tau, 'sigma': sigma})
-        
-        case_base_params = case_base_params if case_base_params is not None else {}
+
+        self._nstates = 0
+        self._statespace = {}
+        """:type: dict[MDPState, MDPStateData]"""
+        self._actions = actions
+        """:type: dict[MDPState, list[MDPAction]] | list[MDPAction]"""
+        self._last_state = None
+        """:type: MDPState"""
+        self._last_action = None
+        """:type: MDPAction"""
+
+        self._n_init = n_init
 
         #: The case base maintaining the observations in the form
         #:     c = <s, a, ds>, where ds = s_{i+1} - s_i
         #: in order to reason on the possible next states.
-        self._cb_t = CaseBase(case_template,
-                              reuse_method='CASMLReuseMethod',
-                              revision_method='CASMLRevisionMethod', revision_method_params=revision_method_params,
-                              retention_method='CASMLRetentionMethod', retention_method_params=retention_method_params,
-                              **case_base_params)
-        """:type: CaseBase"""
+        self._cb_t = CaseBase(**cbtdata.__dict__)
 
-        hmm_params = hmm_params if hmm_params is not None else {}
+        self._cb_v = None
+        if cbvdata is not None:
+            #: The case base maintaining the observations in the form
+            #:     c = <s, v>
+            #: in order to reason on the next best action.
+            self._cb_v = CaseBase(**cbvdata.__dict__)
+
+        hmm_param_names = ['startprob_prior', 'startprob', 'transmat_prior', 'transmat',
+                           'emission_prior', 'emission', 'niter', 'thresh', 'verbose']
+        hmm_params = {k: v for k, v in kwargs.iteritems() if k in hmm_param_names}
+        # hmm_params = hmm_params if hmm_params is not None else {}
         hmm_params.update({'ncomponents': ncomponents})
         #: The hidden Markov model maintaining the observations in the form
         #:     seq = <s_{i}, s_{i+1}>
@@ -608,7 +822,7 @@ class CASML(IMDPModel):
         """:type: GaussianHMM"""
 
     # noinspection PyProtectedMember
-    def fit(self, obs, actions, n_init=1, **kwargs):
+    def fit(self, obs, actions, rewards=None, n_init=1):
         """Fit the :class:`.CaseBase` and the :class:`.HMM`.
 
         The model is fit to the observations and actions of the trajectory by
@@ -632,8 +846,12 @@ class CASML(IMDPModel):
             self._cb_t.run(self._cb_t.case_from_data(
                 Experience(obs[:, i], actions[:, i], obs[:, i + 1])))
 
+            if self._cb_v is not None:
+                self._cb_v.run(self._cb_v.case_from_data(
+                    Experience(obs[:, i], actions[:, i], obs[:, i + 1], rewards[:, i])))
+
         # build initial state distribution
-        self._initial_dist.add_state(State(obs[:, 0]))
+        self._initial_dist.add_state(MDPState(obs[:, 0]))
 
         if self._hmm._fit_X is None:
             x = np.array([obs])
@@ -644,6 +862,7 @@ class CASML(IMDPModel):
             x = np.vstack([self._hmm._fit_X, [obs]])
         self._hmm.fit(x, n_init=n_init)
 
+    # noinspection PyProtectedMember
     def update(self, experience):
         """Update the model with the agent's experience.
 
@@ -658,7 +877,72 @@ class CASML(IMDPModel):
             Return True if the model has changed, False otherwise.
 
         """
+        if experience.state is None:
+            self._initial_dist.add_state(experience.next_state)
+            self._last_state = copy.deepcopy(experience.next_state)
+            self._last_action = copy.deepcopy(experience.action)
+            return False
+
         self._cb_t.run(self._cb_t.case_from_data(experience))
+
+        if self._cb_v is not None:
+            self._cb_v.run(self._cb_v.case_from_data(experience))
+
+        if self._hmm._fit_X is None:
+            x = np.array([np.concatenate((np.reshape(experience.state, (-1, experience.state.nfeatures)).T,
+                          np.reshape(experience.next_state, (-1, experience.next_state.nfeatures)).T), axis=1)])
+        else:
+            # self._hmm.startprob = None
+            # self._hmm.transmat = None
+            # self._hmm.emission = None
+            x = np.array([np.hstack([self._hmm._fit_X[0], np.reshape(experience.state, (-1, experience.state.nfeatures)).T])])
+        self._hmm.fit(x, n_init=self._n_init)
+
+        self.add_state(experience.state)
+        self.add_state(experience.next_state)
+
+        for state in self._statespace.keys():
+            info = self._statespace[state]
+
+            for act, model in info.models.iteritems():
+                model.transition_proba.clear()
+                for next_state, prob in self.predict_proba(state, act).iteritems():
+                    if next_state not in self._statespace:
+                        if next_state.is_valid():
+                            self._logger.debug("Unknown state {0} in transitioning model".format(next_state))
+                            self.add_state(next_state)
+                        else:
+                            next_state = copy.deepcopy(state)
+                    model.transition_proba.iadd(next_state, prob)
+
+                model.reward_func.set(experience.reward)
+
+        # self._statespace = {}
+        # for i, c in self._cb_t.cases.iteritems():
+        #     case_matches = self._cb_t.retrieve(c, 'state', False)
+        #
+        #     actions = []
+        #     for m in case_matches.itervalues():
+        #         actions.append(m.case["act"])
+        #
+        #     state = MDPState(c['state'])
+        #     self.add_state(i, state, actions)
+        #
+        #     info = self._statespace[state]
+        #     for act, model in info.models.iteritems():
+        #         model.transition_proba[state] = self.predict_proba(state, act)
+
+        self._last_state = copy.deepcopy(experience.next_state)
+        self._last_action = copy.deepcopy(experience.action)
+        return True
+
+    def add_state(self, state):
+        if state is not None and state not in self._statespace:
+            self._nstates += 1
+            self._statespace[state] = MDPStateData(self._nstates, self._actions)
+            return True
+
+        return False
 
     def predict_proba(self, state, action):
         """Predict the probability distribution.
@@ -686,8 +970,8 @@ class CASML(IMDPModel):
         solution = self._cb_t.revision(case, revised_matches)
         solution = [cm for cm in solution.itervalues() if cm.is_solution]
         # if not solution:
-        #     self._cb_t.plot_retrieval(case, [cm.case.id for cm in case_matches.itervalues()], 'state')
-        #     self._cb_t.plot_revision(case, solution)
+        #     self._cb_T.plot_retrieval(case, [cm.case.id for cm in case_matches.itervalues()], 'state')
+        #     self._cb_T.plot_revision(case, solution)
 
         # calculate next states from current state and solution delta state
         current_state = case["state"]
@@ -703,4 +987,4 @@ class CASML(IMDPModel):
         # use HMM to calculate probability for observing sequence <current_state, next_state>
         # noinspection PyTypeChecker
         proba = normalize(np.exp(self._hmm.score(sequences)))
-        return {State(s[1]): l for s, l in zip(sequences, proba)}
+        return {MDPState(s[1]): l for s, l in zip(sequences, proba)}

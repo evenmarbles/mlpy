@@ -13,9 +13,7 @@ import pytest
 
 class TestAgentModule(object):
     def setup_method(self, _):
-        from mlpy.mdp.stateaction import Action
-        Action.description = None
-        Action.nfeatures = None
+        pass
 
     def test_agentmodule_creation(self):
         from mlpy.agents.modules import AgentModuleFactory
@@ -35,30 +33,22 @@ class TestAgentModule(object):
         with pytest.raises(TypeError):
             AgentModuleFactory().create('learningmodule')
 
-        from mlpy.mdp.stateaction import Action
-        Action.set_description({
-            'out': {'value': [-0.004]},
-            'in': {'value': [0.004]},
-            'kick': {'value': [-1.0]}
-        })
-
         # create `qlearner` learning module
-        AgentModuleFactory().create('learningmodule', 'qlearner', max_steps=10)
-        AgentModuleFactory().create('learningmodule', 'qlearner', lambda s, a: 1.0, max_steps=10)
+        AgentModuleFactory().create('learningmodule', learner_type='qlearner', alpha=0.5)
 
-        with pytest.raises(ValueError):
-            AgentModuleFactory().create('learningmodule', 'qlearner', 1.0, max_steps=10)
+        with pytest.raises(TypeError):
+            AgentModuleFactory().create('learningmodule', 'qlearner', 0.5)
 
-        # create `rldtlearner` learner module
+        # create `modelbasedlearner` learner module
         from mlpy.mdp.discrete import DiscreteModel
         from mlpy.planners.discrete import ValueIteration
         planner = ValueIteration(DiscreteModel(['out', 'in', 'kick']))
 
-        AgentModuleFactory().create('learningmodule', 'rldtlearner', None, planner, max_steps=10)
-        AgentModuleFactory().create('learningmodule', 'rldtlearner', planner=planner, max_steps=10)
+        AgentModuleFactory().create('learningmodule', 'modelbasedlearner', planner)
+        AgentModuleFactory().create('learningmodule', learner_type='modelbasedlearner', planner=planner)
 
         with pytest.raises(TypeError):
-            AgentModuleFactory().create('learningmodule', 'rldtlearner', max_step=10)
+            AgentModuleFactory().create('learningmodule', 'modelbasedlearner')
 
     def teardown_method(self, _):
         pass
@@ -66,29 +56,21 @@ class TestAgentModule(object):
 
 class TestAgent(object):
     def setup_method(self, _):
-        from mlpy.mdp.stateaction import Action
-        Action.set_description({
-            'out': {'value': [-0.004]},
-            'in': {'value': [0.004]},
-            'kick': {'value': [-1.0]}
-        })
+        pass
 
     def test_agent_creation(self):
-        from mlpy.agents import Agent
-        from mlpy.experiments.task import Task
+        from mlpy.agents.modelbased import ModelBasedAgent
+
+        ModelBasedAgent('learningmodule', learner_type='qlearner')
+
+        ModelBasedAgent('learningmodule', learner_type='qlearner', alpha=0.7)
+        ModelBasedAgent('learningmodule', None, None, None, None, 'qlearner', alpha=0.7)
+
         from mlpy.mdp.discrete import DiscreteModel
         from mlpy.planners.discrete import ValueIteration
-
-        Agent()
-
-        Agent(module_type='learningmodule', learner_type='qlearner', max_steps=10)
-        Agent(None, 'learningmodule', None, 'qlearner', max_steps=10)
-
-        task = Task()
-        Agent(None, 'learningmodule', task, 'qlearner', max_steps=10)
-
         planner = ValueIteration(DiscreteModel(['out', 'in', 'kick']))
-        Agent(None, 'learningmodule', None, 'rldtlearner', None, planner, max_steps=10)
+
+        ModelBasedAgent('learningmodule', learner_type='modelbasedlearner', planner=planner)
 
     def teardown_method(self, _):
         pass

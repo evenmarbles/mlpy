@@ -126,6 +126,10 @@ class Feature(object):
         """
         return self._value
 
+    @value.setter
+    def value(self, value):
+        self._value = value
+
     @property
     def weight(self):
         """The weights given to each feature value
