@@ -242,7 +242,10 @@ class Cacla(IOnlineLearner):
             self._action = np.zeros((num_states, MDPAction.nfeatures))
             self._value = np.zeros((num_states,))
         else:
-            self._action = NeuralNetwork([MDPState.nfeatures, self._nhidden_q, MDPAction.nfeatures])
+            if self._nhidden_q == 0:
+                self._action = np.random.random((MDPState.nfeatures + 1, MDPAction.nfeatures))
+            else:
+                self._action = NeuralNetwork([MDPState.nfeatures, self._nhidden_q, MDPAction.nfeatures])
             self._value = NeuralNetwork([MDPState.nfeatures, self._nhidden_v, 1])
 
             self._v_target = np.zeros((1,))
@@ -261,7 +264,7 @@ class Cacla(IOnlineLearner):
             performed in that state, the current state, and the reward awarded.
 
         """
-        if not MDPState.discretized:
+        if not MDPState.discretized and self._nhidden_q > 0:
             self._action.feed_forward(experience.next_state)
 
     def end(self, experience):
@@ -291,7 +294,13 @@ class Cacla(IOnlineLearner):
             self._value.back_propagate(experience.state, self._v_target, self._alpha)
 
             if self._v_target[0] > vt:
-                self._action.back_propagate(experience.state, experience.action, self._beta)
+                if self._nhidden_q == 0:
+                    st = np.ones((experience.state.get().shape[0] + 1,))
+                    st[:-1] = experience.state
+
+                    self._action += self._beta * np.outer(st, (experience.action - self._get_action(experience.state)))
+                else:
+                    self._action.back_propagate(experience.state, experience.action, self._beta)
 
     def learn(self, experience):
         """Learn a policy from the experience.
@@ -323,7 +332,13 @@ class Cacla(IOnlineLearner):
             self._value.back_propagate(experience.state, self._v_target, self._alpha)
 
             if self._v_target[0] > vt:
-                self._action.back_propagate(experience.state, experience.action, self._beta)
+                if self._nhidden_q == 0:
+                    st = np.ones((experience.state.get().shape[0] + 1,))
+                    st[:-1] = experience.state
+
+                    self._action += self._beta * np.outer(st, (experience.action - self._get_action(experience.state)))
+                else:
+                    self._action.back_propagate(experience.state, experience.action, self._beta)
 
     def choose_action(self, state):
         """Choose the next action
@@ -345,7 +360,10 @@ class Cacla(IOnlineLearner):
         if MDPState.discretized:
             action = self._action[state]
         else:
-            action = self._action.get_activations(-1)
+            if self._nhidden_q > 0:
+                action = self._action.get_activations(-1)
+            else:
+                action = self._get_action(state)
 
         if self._explorer_type == "egreedy":
             if bernoulli.rvs(self._explore_rate):
@@ -356,6 +374,16 @@ class Cacla(IOnlineLearner):
                 action[i] += self._explore_rate * self._gaussian_random()
 
         return MDPAction(action)
+
+    def _get_action(self, state):
+        st = np.ones((state.get().shape[0] + 1,))
+        st[:-1] = state
+
+        action = np.asarray(np.dot(self._action.T, st))
+        if action.ndim == 0:
+            action = action[np.newaxis]
+
+        return action
 
     def _gaussian_random(self):
         if self._stored_gauss:

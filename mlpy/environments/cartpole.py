@@ -27,7 +27,7 @@ class CartPole(Environment):
     def __init__(self, mode='easy', pole_len=None, pole_mass=None, max_force=10, noise=0.0, reward_noise=0.0,
                  discrete_state=False, discrete_action=False, random_start=True, cart_loc=None, cart_vel=None,
                  pole_angle=None, pole_vel=None, mu_c=None, mu_p=None, simsteps=10, discount_factor=0.999,
-                 dim_size=None):
+                 dim_size=None, include_friction=True):
         if mode not in ['easy', 'hard', 'swingup', 'custom']:
             raise ValueError("Unsupported mode '{0}'.".format(mode))
 
@@ -38,6 +38,8 @@ class CartPole(Environment):
         self._discrete_action = discrete_action
 
         self._dim_size = dim_size
+
+        self._include_friction = include_friction
 
         self._gravity = -9.81           # Gravity in m/s^2
         self._cart_mass = 1.            # Weight of the cart in kg
@@ -57,6 +59,9 @@ class CartPole(Environment):
                    " but array 'pole_mass' is a vector of length %d.")
             msg = msg % (self._pole_len.shape[0], self._pole_mass.shape[0])
             raise ValueError(msg)
+
+        if self._pole_len.shape[0] > 1 and not self._include_friction:
+            raise ValueError("Multiple poles without friction not implemented.")
 
         self._cart_loc = 0.0
         self._cart_vel = 0.0
@@ -165,7 +170,7 @@ class CartPole(Environment):
     def start(self):
         self._cart_loc = 0.
         self._cart_vel = 0.
-        self._pole_angle = np.asarray([np.pi * 1. / 180., 0.])
+        self._pole_angle.fill(0.0)        # = np.asarray([np.pi * 1. / 180., 0.])
         self._pole_vel.fill(0.)
         if self._random_start:
             self._pole_angle = (np.random.random(self._pole_angle.shape) - 0.5) / 5.
@@ -205,17 +210,36 @@ class CartPole(Environment):
             #     force = 10. / 256. if force > 0 else -10. / 256.
         force += self._max_force * np.random.normal(scale=self._noise) if self._noise > 0 else 0.0
 
+        df = self._dt / float(self._simsteps)
         for step in range(self._simsteps):
-            cart_accel = force - self._mu_c * np.sign(self._cart_vel) + self._effective_force()
-            cart_accel /= (self._cart_mass + self._effective_mass())
-            pole_accel = -.375 / self._pole_len * (cart_accel * np.cos(self._pole_angle) + self._gravity_on_pole())
+            if self._include_friction:
+                cart_accel = force - self._mu_c * np.sign(self._cart_vel) + self._effective_force()
+                cart_accel /= (self._cart_mass + self._effective_mass())
+                pole_accel = (-.75 / self._pole_len) * (cart_accel * np.cos(self._pole_angle) + self._gravity_on_pole())
 
-            df = self._dt / float(self._simsteps)
+            else:
+                cos_pole_angle = np.cos(self._pole_angle)
+                sin_pole_angle = np.sin(self._pole_angle)
+                pole_vel_sq = self._pole_vel * self._pole_vel
+                cos_pole_angle_sq = cos_pole_angle * cos_pole_angle
+
+                totalM = self._cart_mass + self._pole_mass
+                ml = self._pole_mass * self._pole_len
+
+                pole_accel = force * cos_pole_angle - totalM * self._gravity * sin_pole_angle + ml * (
+                    cos_pole_angle * sin_pole_angle) * pole_vel_sq
+                pole_accel /= ml * cos_pole_angle_sq - totalM * self._pole_len
+
+                cart_accel = force + ml * sin_pole_angle * pole_vel_sq - self._pole_mass * self._gravity * cos_pole_angle * sin_pole_angle
+                cart_accel /= totalM - self._pole_mass * cos_pole_angle_sq
+
             self._cart_loc += df * self._cart_vel
             self._cart_vel += df * cart_accel
             self._pole_angle += df * self._pole_vel
             self._pole_vel += df * pole_accel
 
+        # If theta (state[2]) has gone past the conceptual limits of [-pi,pi]
+        # map it onto the equivalent angle that is in the accepted range (by adding or subtracting 2pi)
         for i in range(self._pole_angle.shape[0]):
             while self._pole_angle[i] < -np.pi:
                 self._pole_angle[i] += 2. * np.pi

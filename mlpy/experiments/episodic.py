@@ -67,7 +67,7 @@ class EpisodicExperiment(object):
             print(out)
 
             if self._f:
-                self._f.write(str(i+1) + ','.join(map(lambda x: str(x), ret)) + "\n")
+                self._f.write(str(i+1) + ',' + ','.join(map(lambda x: str(x), ret)) + "\n")
                 self._f.flush()
 
             if converged:

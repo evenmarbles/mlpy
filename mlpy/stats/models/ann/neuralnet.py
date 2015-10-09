@@ -216,8 +216,7 @@ class NeuralNetwork(object):
 
     def _back_propagate_layer(self, layer, error):
         ierror = error.dot(self._weights[layer][:-1].T) * self._activation[layer].derivative(self._out[layer][:-1])
-        self._weights[layer] += np.tile(np.reshape(self._out[layer], (self._out[layer].shape[0], -1)),
-                                        error.shape[0]) * error
+        self._weights[layer] += np.outer(self._out[layer], error)
 
         self._dirty = False
         return ierror

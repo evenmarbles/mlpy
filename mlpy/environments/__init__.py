@@ -32,4 +32,4 @@ Webots
    ~utils.webots.client.WebotsClient
 
 """
-__all__ = ['gridworld', 'utils']
+__all__ = ['utils', 'cartpole', 'taxi']
