@@ -83,7 +83,7 @@ class LoggingMgr(object):
 
     This removes the stream handler from the logger with module id `my_id`.
 
-    >>> LoggingMgr().change_level('my_id', LoggingMgr.LOG_TYPE_ALL, LoggingMgr.LOG_DEBUG)
+    >>> LoggingMgr().change_level('my_id', LoggingMgr.LOG_DEBUG, LoggingMgr.LOG_TYPE_ALL)
 
     This changes the log level for all attached handlers of the logger identified by
     `my_id` to LOG_DEBUG.

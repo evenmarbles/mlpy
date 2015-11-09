@@ -128,7 +128,7 @@ class CartPole(Environment):
             # else:
             ts.add_double_obs(limits, repeat=repeat)
 
-        extra = " COPYRIGHT Taxi (Python) implemented by Astrid Jackson."
+        extra = " COPYRIGHT Cart Pole (Python) implemented by Astrid Jackson."
 
         pole_angle_descr = "'pole angle',"
         pole_vel_descr = "'pole velocity'"
@@ -148,6 +148,8 @@ class CartPole(Environment):
             action_descr = action_descr % tuple(np.repeat(np.arange(-self._max_force, self._max_force + 1, step), 2))
             action_descr = action_descr.strip(',')
             action_descr = "ACTIONDESCR {%s}" % action_descr
+            actions_per_dim = " ACTIONS_PER_DIM (20)"
+            extra = actions_per_dim + extra
         else:
             ts.add_double_act((-self._max_force, self._max_force))
             action_descr = "ACTIONDESCR {'force':{'value':'*','descr':{'cart':[0]}}}"

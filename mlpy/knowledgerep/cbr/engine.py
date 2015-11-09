@@ -90,7 +90,7 @@ class Case(object):
         A list of features describing the case.
 
     """
-    __slots__ = ('_id', '_name', '_description', '_features', 'ix')
+    __slots__ = ('_id', '_name', '_description', '_features', 'ix', 'transition_proba', 'reward_func', 'q')
 
     @property
     def id(self):
@@ -585,15 +585,17 @@ class CaseBase(object):
 
         self._plot_retrieval = plot_retrieval if plot_retrieval is not None else False
         """:type: bool"""
-        if self._plot_retrieval:
-            self._plot_retrieval_names = plot_retrieval_names if plot_retrieval_names is not None else None
-            """:type: str | list[str]"""
+        self._plot_retrieval_names = plot_retrieval_names if plot_retrieval_names is not None else None
+        """:type: str | list[str]"""
 
-            self._fig = None
-            self._ax = None
+        self._fig = None
+        self._ax = None
 
     def __getitem__(self, key):
         return self._cases[key]
+
+    def __contains__(self, item):
+        return item in self._cases
 
     def __len__(self):
         return len(self._cases)
@@ -637,6 +639,22 @@ class CaseBase(object):
         """
         self._cases[self._counter] = case
         self._counter += 1
+        for c in self._cb.itervalues():
+            c.dirty = True
+
+    def remove(self, case_id):
+        """Remove the case with the given case id from the case base.
+
+        No checks are being performed
+
+        Parameters
+        ----------
+        case_id : int
+            The id of the case to be removed.
+
+        """
+        del self._cases[case_id]
+        self._counter -= 1
         for c in self._cb.itervalues():
             c.dirty = True
 
@@ -814,7 +832,7 @@ class CaseBase(object):
         for c in self._cases.itervalues():
             [xs, ys, zs] = c.get_features(names)
             if c.id in case_id_list:
-                self._ax.scatter(xs, ys, zs, edgecolors='g', c='g', marker='^')
+                self._ax.scatter(xs, ys, zs, edgecolors='g', c='g', marker='o')
             else:
                 self._ax.scatter(xs, ys, zs, c='k', marker='o')
 
@@ -830,7 +848,7 @@ class CaseBase(object):
 
         self._fig.canvas.draw()
 
-    def plot_reuse(self, case, case_matches, revised_matches):
+    def plot_reuse(self, case, case_matches):
         """Plot the reuse result.
 
         Parameters
@@ -839,11 +857,9 @@ class CaseBase(object):
             The query case.
         case_matches : dict[int, CaseMatch]
             The solution to the problem-solving experience.
-        revised_matches : dict[int, CaseMatch]
-            The revised solution to the problem-solving experience.
 
         """
-        self._reuse_method.plot_data(case, case_matches, revised_matches)
+        self._reuse_method.plot_data(case, case_matches)
 
     def plot_revision(self, case, case_matches):
         """Plot revision results.

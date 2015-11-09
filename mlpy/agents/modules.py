@@ -418,6 +418,7 @@ class FollowPolicyModule(IAgentModule):
             action = MDPAction(self._policies[self._current][:, self._cntr])
             self._logger.debug("'%s'" % action)
 
+        # TODO: Doesn't really terminate (rlglue needs to react to this)
         self.terminate(action is None)
         return action
 

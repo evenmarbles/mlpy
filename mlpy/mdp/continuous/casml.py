@@ -29,7 +29,8 @@ from ...auxiliary.plotting import Arrow3D
 from ...knowledgerep.cbr.engine import CaseBase
 from ...knowledgerep.cbr.methods import IReuseMethod, IRevisionMethod, IRetentionMethod
 from ...stats.dbn.hmm import GaussianHMM
-from ..stateaction import Experience, MDPState, MDPStateData
+from ..stateaction import Experience, MDPState, MDPAction, RewardFunction
+from ..distrib import ProbabilityDistribution
 from .. import IMDPModel
 
 __all__ = ['CbTData', 'CbVData', 'CASML']
@@ -51,9 +52,9 @@ class CbTReuseMethod(IReuseMethod):
         A pointer to the owning case base.
     rho : float, optional
         The permitted error of the similarity measure. Default is 0.99.
-    plot_revision : bool, optional
+    plot_reuse : bool, optional
         Whether to plot the vision step or not. Default is False.
-    plot_revision_params : {'origin_to_query', 'original_origin'}
+    plot_reuse_params : {'origin_to_query', 'original_origin'}
         Parameters used for plotting. Valid parameters are:
 
             origin_to_query
@@ -86,13 +87,12 @@ class CbTReuseMethod(IReuseMethod):
 
         self._plot = plot_reuse if plot_reuse is not None else False
         """:type: bool"""
-        if self._plot:
-            self._plot_params = "origin_to_query"
-            if plot_reuse_params is not None:
-                if plot_reuse_params not in ["origin_to_query", "original_origin"]:
-                    raise ValueError(
-                        "%s is not a valid plot parameter for revision method" % plot_reuse_params)
-                self._plot_params = plot_reuse_params
+        self._plot_params = "origin_to_query"
+        if plot_reuse_params is not None:
+            if plot_reuse_params not in ["origin_to_query", "original_origin"]:
+                raise ValueError(
+                    "%s is not a valid plot parameter for revision method" % plot_reuse_params)
+            self._plot_params = plot_reuse_params
 
     # noinspection PyMethodMayBeStatic
     def execute(self, case, case_matches):
@@ -198,7 +198,7 @@ class CbTReuseMethod(IReuseMethod):
                 [x, y, z] = cm.case["state"]
                 self._ax2.scatter(x, y, z, c='k', marker='o')
 
-            [vx, vy, vz] = cm.case["act"].get()
+            [vx, vy, vz] = cm.case["act"]
 
             color = "k"
             if cm.is_solution:
@@ -658,13 +658,13 @@ class CbTData(object):
 
         self.reuse_method = 'CbTReuseMethod'
         self.reuse_method_params = {'rho': rho}
-        for k, v in kwargs.iteritems():
+        for k, v in dict(kwargs).iteritems():
             if k in ["plot_reuse", "plot_reuse_params"]:
                 self.reuse_method_params[k] = kwargs.pop(k)
 
         self.retention_method = 'CbTRetentionMethod'
         self.retention_method_params = {'tau': tau, 'sigma': sigma}
-        for k, v in kwargs.iteritems():
+        for k, v in dict(kwargs).iteritems():
             if k in ['plot_retention']:
                 self.retention_method_params[k] = kwargs.pop(k)
 
@@ -716,6 +716,19 @@ class CbVData(object):
         the transition case base.
         Default is 0.8.
 
+    Additional Parameters
+    ---------------------
+    plot_retrieval : bool, optional
+        Whether to plot the result of the retrieval method. Default is False.
+    plot_retrieval_names : str or list[str], optional
+        The names of the feature which to plot.
+    plot_reuse : bool, optional
+        Whether to plot the result of the reuse method. Default is False.
+    plot_reuse_params : {"origin_to_query", "original_origin"}, optional
+        The location of the origin. Default is "origin_to_query"
+    plot_retention : bool, optional
+        Whether to plot the results of the retention method. Default is False.
+
     """
 
     def __init__(self, case_template, tau=None, **kwargs):
@@ -727,6 +740,9 @@ class CbVData(object):
 
         self.retention_method = 'CbVRetentionMethod'
         self.retention_method_params = {'tau': tau}
+        for k, v in kwargs.iteritems():
+            if k in ['plot_retention']:
+                self.retention_method_params[k] = kwargs.pop(k)
 
         for key, value in kwargs.iteritems():
             setattr(self, key, value)
@@ -747,6 +763,8 @@ class CASML(IMDPModel):
     proba_calc_method : str, optional
         The method used to calculate the probability distribution for the initial
         states. Default is DefaultProbaCalcMethod.
+    actions : list or dict, optional
+        A list of possible discrete actions.
 
     Additional Parameters
     ---------------------
@@ -771,29 +789,21 @@ class CASML(IMDPModel):
 
     """
     @property
-    def statespace(self):
-        return self._statespace
-
-    @property
-    def transition_cases(self):
-        return self._cb_t.cases
-
-    @property
-    def value_cases(self):
+    def cases(self):
         return self._cb_v.cases
 
-    def __init__(self, cbtdata, cbvdata=None, ncomponents=1, proba_calc_method=None, n_init=1, actions=None, **kwargs):
+    @property
+    def experience(self):
+        return self._experience
+
+    def __init__(self, cbtdata, cbvdata=None, ncomponents=1, proba_calc_method=None, actions=None, n_init=1, **kwargs):
         super(CASML, self).__init__(proba_calc_method)
 
         self._nstates = 0
-        self._statespace = {}
-        """:type: dict[MDPState, MDPStateData]"""
         self._actions = actions
         """:type: dict[MDPState, list[MDPAction]] | list[MDPAction]"""
-        self._last_state = None
-        """:type: MDPState"""
-        self._last_action = None
-        """:type: MDPAction"""
+        self._experience = None
+        """:type: Experience"""
 
         self._n_init = n_init
 
@@ -820,6 +830,37 @@ class CASML(IMDPModel):
         #: next states.
         self._hmm = GaussianHMM(**hmm_params)
         """:type: GaussianHMM"""
+
+    def get_actions(self, state=None):
+        """Retrieve the available actions for the given state.
+
+        Parameters
+        ----------
+        state : MDPState
+            The state for which to get the actions.
+
+        Returns
+        -------
+        list :
+            The actions that can be taken in this state.
+
+        Raises
+        ------
+        ValueError:
+            If the actions have not been initialized.
+
+        """
+        if self._actions is None:
+            case = self._cb_t.case_from_data(Experience(state, MDPAction.get_noop_action(), state))
+            case_matches = self._cb_t.retrieve(case)
+
+            actions = []
+            for cm in case_matches.itervalues():
+                actions.append(cm.case["act"])
+
+        if isinstance(self._actions, dict):
+            return self._actions[state]
+        return self._actions
 
     # noinspection PyProtectedMember
     def fit(self, obs, actions, rewards=None, n_init=1):
@@ -877,72 +918,45 @@ class CASML(IMDPModel):
             Return True if the model has changed, False otherwise.
 
         """
+        self._experience = copy.deepcopy(experience)
+
         if experience.state is None:
             self._initial_dist.add_state(experience.next_state)
-            self._last_state = copy.deepcopy(experience.next_state)
-            self._last_action = copy.deepcopy(experience.action)
             return False
 
         self._cb_t.run(self._cb_t.case_from_data(experience))
 
         if self._cb_v is not None:
-            self._cb_v.run(self._cb_v.case_from_data(experience))
+            case = self._cb_v.case_from_data(experience)
 
+            actions = self.get_actions(experience.state)
+
+            setattr(case, "transition_proba", {a: ProbabilityDistribution() for a in actions})
+            setattr(case, "reward_func", {a: RewardFunction() for a in actions})
+            if self._actions:
+                case.reward_func[experience.action].set(experience.reward)
+                setattr(case, "q", {a: 0.0 for a in actions})
+            else:
+                for a in actions:
+                    case.reward_func[a].set(experience.reward)
+
+            self._cb_v.run(case)
+
+        # TODO: MAYBE only add new experience if it was retained in cb_t
         if self._hmm._fit_X is None:
             x = np.array([np.concatenate((np.reshape(experience.state, (-1, experience.state.nfeatures)).T,
-                          np.reshape(experience.next_state, (-1, experience.next_state.nfeatures)).T), axis=1)])
+                                          np.reshape(experience.next_state, (-1, experience.next_state.nfeatures)).T),
+                                         axis=1)])
         else:
             # self._hmm.startprob = None
             # self._hmm.transmat = None
             # self._hmm.emission = None
-            x = np.array([np.hstack([self._hmm._fit_X[0], np.reshape(experience.state, (-1, experience.state.nfeatures)).T])])
+            x = np.array(
+                [np.hstack([self._hmm._fit_X[0], np.reshape(experience.state, (-1, experience.state.nfeatures)).T])])
+
         self._hmm.fit(x, n_init=self._n_init)
 
-        self.add_state(experience.state)
-        self.add_state(experience.next_state)
-
-        for state in self._statespace.keys():
-            info = self._statespace[state]
-
-            for act, model in info.models.iteritems():
-                model.transition_proba.clear()
-                for next_state, prob in self.predict_proba(state, act).iteritems():
-                    if next_state not in self._statespace:
-                        if next_state.is_valid():
-                            self._logger.debug("Unknown state {0} in transitioning model".format(next_state))
-                            self.add_state(next_state)
-                        else:
-                            next_state = copy.deepcopy(state)
-                    model.transition_proba.iadd(next_state, prob)
-
-                model.reward_func.set(experience.reward)
-
-        # self._statespace = {}
-        # for i, c in self._cb_t.cases.iteritems():
-        #     case_matches = self._cb_t.retrieve(c, 'state', False)
-        #
-        #     actions = []
-        #     for m in case_matches.itervalues():
-        #         actions.append(m.case["act"])
-        #
-        #     state = MDPState(c['state'])
-        #     self.add_state(i, state, actions)
-        #
-        #     info = self._statespace[state]
-        #     for act, model in info.models.iteritems():
-        #         model.transition_proba[state] = self.predict_proba(state, act)
-
-        self._last_state = copy.deepcopy(experience.next_state)
-        self._last_action = copy.deepcopy(experience.action)
         return True
-
-    def add_state(self, state):
-        if state is not None and state not in self._statespace:
-            self._nstates += 1
-            self._statespace[state] = MDPStateData(self._nstates, self._actions)
-            return True
-
-        return False
 
     def predict_proba(self, state, action):
         """Predict the probability distribution.
@@ -969,22 +983,34 @@ class CASML(IMDPModel):
         revised_matches = self._cb_t.reuse(case, case_matches)
         solution = self._cb_t.revision(case, revised_matches)
         solution = [cm for cm in solution.itervalues() if cm.is_solution]
-        # if not solution:
-        #     self._cb_T.plot_retrieval(case, [cm.case.id for cm in case_matches.itervalues()], 'state')
-        #     self._cb_T.plot_revision(case, solution)
 
-        # calculate next states from current state and solution delta state
-        current_state = case["state"]
-        sequences = np.zeros((len(solution), 2, len(current_state)), dtype=float)
+        nsolution = len(solution)
+        if nsolution > 1:
+            # calculate next states from current state and solution delta state
+            sequences = np.zeros((len(solution), 2, len(state)), dtype=float)
 
-        for i, cm in enumerate(solution):
-            if cm.is_solution:
-                sequences[i, 0] = np.array(current_state)
+            for i, cm in enumerate(solution):
+                sequences[i, 0] = np.array(state)
 
-                delta_state = cm.case["delta_state"]
-                sequences[i, 1] = np.asarray(current_state + delta_state)
+                delta_state = cm.case['delta_state']
+                sequences[i, 1] = np.asarray(state + delta_state)
 
-        # use HMM to calculate probability for observing sequence <current_state, next_state>
-        # noinspection PyTypeChecker
-        proba = normalize(np.exp(self._hmm.score(sequences)))
-        return {MDPState(s[1]): l for s, l in zip(sequences, proba)}
+            # use HMM to calculate probability for observing sequence <current_state, next_state>
+            # noinspection PyTypeChecker
+            proba = normalize(np.exp(self._hmm.score(sequences)))
+            return {MDPState(s[1]): l for s, l in zip(sequences, proba)}
+
+        if nsolution > 0:
+            return {MDPState(state + solution[0].case['delta_state']): 1.}
+        # else:
+        #     self._cb_t.plot_retrieval(case, [id_ for id_ in revised_matches.iterkeys()], case.get_indexed())
+        #     self._cb_t.plot_reuse(case, revised_matches)
+
+        return {}
+
+    def retrieve(self, case_base, state, action, validity_check=False):
+        experience = Experience(state, action, state)
+        if case_base == 'transition':
+            return self._cb_t.retrieve(self._cb_t.case_from_data(experience), validity_check=validity_check)
+        if case_base == 'value':
+            return self._cb_v.retrieve(self._cb_v.case_from_data(experience), validity_check=validity_check)

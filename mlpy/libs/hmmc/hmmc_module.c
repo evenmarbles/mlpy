@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <math.h>
 
+#undef _DEBUG
 #include "Python.h"
 
 #define NPY_NO_DEPRECATED_API NPY_API_VERSION

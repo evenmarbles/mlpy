@@ -2,6 +2,7 @@ from __future__ import division, print_function, absolute_import
 
 import time
 import copy
+import numpy as np
 
 from rlglued.agent.agent import Agent
 from rlglued.utils.taskspecvrlglue3 import TaskSpecParser
@@ -192,19 +193,23 @@ class ModelBasedAgent(UniqueModule, Agent):
             gamma = ts.discount_factor
             reward_range = ts.get_reward_range()
 
-            obs = ts.get_int_obs()
-            obs += ts.get_double_obs()
+            obs = list(ts.get_int_obs())
+            obs += list(ts.get_double_obs())
+            if len(ts.get_double_obs()) == 0:
+                MDPState.set_dtype(MDPState.DTYPE_INT)
             if len(obs) > 0:
                 MDPState.set_minmax_features(*obs)
 
-            act = ts.get_int_act()
-            act += ts.get_double_act()
+            act = list(ts.get_int_act())
+            act += list(ts.get_double_act())
+            if len(ts.get_double_act()) == 0:
+                MDPAction.set_dtype(MDPAction.DTYPE_INT)
             if len(act) > 0:
                 MDPAction.set_minmax_features(*act)
 
             extra = ts.get_extra()
 
-            v = ['STATEDESCR', 'ACTIONDESCR', 'STATES_PER_DIM', 'COPYRIGHT']
+            v = ['STATEDESCR', 'ACTIONDESCR', 'STATES_PER_DIM', 'ACTIONS_PER_DIM', 'COPYRIGHT']
             pos = []
             for i, id_ in enumerate(list(v)):
                 try:
@@ -222,6 +227,8 @@ class ModelBasedAgent(UniqueModule, Agent):
                     MDPAction.set_description(eval(val))
                 elif id_ == 'STATES_PER_DIM':
                     MDPState.set_states_per_dim(eval(val))
+                elif id_ == 'ACTIONS_PER_DIM':
+                    MDPAction.set_states_per_dim(eval(val))
 
         self._module.init()
 
@@ -326,25 +333,30 @@ class ModelBasedAgent(UniqueModule, Agent):
         return MDPState(observation)
 
     def _process_observation(self, observation, reward=None):
-        state = self.obs2state(observation.intArray + observation.doubleArray)
+        state = self.obs2state(list(observation.intArray) + list(observation.doubleArray))
         self._module.step(Experience(self._last_state, self._last_action, state, reward))
 
         action = self._module.choose_action(state)
 
         self._last_state = copy.deepcopy(state)
         self._last_action = copy.deepcopy(action)
-        self._record_experience(state, action)
+        if not self._module.is_complete():
+            self._record_experience(state, action)
 
         if self._bot is not None:
             self._bot.next_behavior(action)
 
         return_action = Action()
         if MDPAction.dtype == MDPAction.DTYPE_INT:
-            return_action.intArray = action.tolist()
+            if action is None:
+                return_action.intArray = []
+            else:
+                return_action.intArray = action.tolist()
         elif MDPAction.dtype == MDPAction.DTYPE_FLOAT:
-            return_action.doubleArray = action.tolist()
-        else:
-            return_action.charArray = action.tolist()
+            if action is None:
+                return_action.doubleArray = []
+            else:
+                return_action.doubleArray = action.tolist()
         return return_action
 
     def _record_experience(self, state, action):

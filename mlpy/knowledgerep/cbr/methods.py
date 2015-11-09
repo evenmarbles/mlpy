@@ -86,7 +86,7 @@ class ICBRMethod(object):
         raise NotImplementedError
 
     # noinspection PyMethodMayBeStatic
-    def plot_data(self, case, case_matches, **kwargs):
+    def plot_data(self, case, case_matches):
         """Plot the data.
 
         Parameters
@@ -95,9 +95,6 @@ class ICBRMethod(object):
             The query case.
         case_matches : dict[int, CaseMatch]
             The solution identified through the similarity measure.
-        kwargs : dict, optional
-            Non-positional arguments passed to the class of the given type
-            for initialization.
 
         """
         pass
@@ -145,7 +142,7 @@ class IReuseMethod(ICBRMethod):
         raise NotImplementedError
 
     # noinspection PyMethodMayBeStatic
-    def plot_data(self, case, case_matches, revised_matches=None):
+    def plot_data(self, case, case_matches):
         """Plot the data.
 
         Parameters
@@ -154,8 +151,6 @@ class IReuseMethod(ICBRMethod):
             The query case.
         case_matches : dict[int, CaseMatch]
             The solution identified through the similarity measure.
-        revised_matches : dict[int, CaseMatch]
-            The revised solution.
 
         """
         pass
@@ -202,7 +197,7 @@ class IRevisionMethod(ICBRMethod):
         raise NotImplementedError
 
     # noinspection PyMethodMayBeStatic
-    def plot_data(self, case, case_matches, **kwargs):
+    def plot_data(self, case, case_matches):
         """Plot the data.
 
         Parameters
@@ -252,7 +247,7 @@ class IRetentionMethod(ICBRMethod):
         raise NotImplementedError
 
     # noinspection PyMethodMayBeStatic
-    def plot_data(self, case, case_matches, **kwargs):
+    def plot_data(self, case, case_matches):
         """Plot the data.
 
         Parameters

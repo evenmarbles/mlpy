@@ -1,7 +1,6 @@
 from __future__ import division, print_function, absolute_import
 
 import copy
-import math
 import numpy as np
 
 from .distrib import ProbabilityDistribution
@@ -269,8 +268,6 @@ class MDPStateData(object):
         # self.q = {a: ((0.01 - 0.0) * np.random.random() + 0.0) for a in actions}
         self.q = {a: 0.0 for a in actions}
         """:type: dict[MDPAction, float]"""
-        self.v = 0.0
-        """:type: float"""
         self.steps_away = 100000
         """:type: int"""
 
